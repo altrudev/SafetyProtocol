@@ -14,3 +14,5 @@ dependencyResolutionManagement {
 }
 rootProject.name = "SafetyProtocol"
 include(":android-adapter")
+
+include(":runtime-test-app")

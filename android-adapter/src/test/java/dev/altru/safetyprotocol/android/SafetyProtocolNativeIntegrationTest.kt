@@ -9,7 +9,6 @@ class SafetyProtocolNativeIntegrationTest {
     private fun wifi(
         validated: Boolean = true,
         captive: Boolean = false,
-        tunnel: Boolean = true,
         contradiction: Boolean = false,
         hardDrift: Boolean = false,
     ) = RawAndroidNetworkObservation(
@@ -19,9 +18,20 @@ class SafetyProtocolNativeIntegrationTest {
         validatedInternet = validated,
         captivePortal = captive,
         security = WifiSecurity.WPA2_OR_BETTER,
-        protectedTunnelReady = tunnel,
         contradictoryEvidence = contradiction,
         hardDrift = hardDrift,
+    )
+
+    private fun evidence(
+        capture: Boolean = true,
+        osObserved: Boolean = true,
+        authenticated: Boolean = true,
+    ) = TunnelEnforcementEvidence(
+        localCaptureEstablished = capture,
+        osVpnTransportObserved = osObserved,
+        protectedSessionAuthenticated = authenticated,
+        sessionFailClosedVerified = capture,
+        persistentFailClosedVerified = false,
     )
 
     @Test
@@ -31,7 +41,7 @@ class SafetyProtocolNativeIntegrationTest {
 
     @Test
     fun androidClaimsCannotPromoteWifiToTrusted() {
-        val decision = SafetyProtocolNative.evaluate(wifi())
+        val decision = SafetyProtocolNative.evaluate(wifi(), evidence())
         assertEquals(CoreConnectivityAuthority.PROTECTED_TRANSPORT, decision.authority)
         assertTrue(decision.effective.transport)
         assertTrue(decision.effective.dataEgress)
@@ -41,16 +51,28 @@ class SafetyProtocolNativeIntegrationTest {
     }
 
     @Test
-    fun tunnelLossFailsClosedInNativeCore() {
-        val decision = SafetyProtocolNative.evaluate(wifi(tunnel = false))
+    fun localCaptureWithoutAuthenticatedSessionFailsClosed() {
+        val decision = SafetyProtocolNative.evaluate(wifi(), evidence(authenticated = false))
         assertEquals(CoreConnectivityAuthority.DENIED, decision.authority)
         assertEquals(CoreDecisionReason.PROTECTED_TRANSPORT_UNAVAILABLE, decision.reason)
     }
 
     @Test
+    fun osVpnObservationIsRequiredForProtectedReadiness() {
+        val decision = SafetyProtocolNative.evaluate(wifi(), evidence(osObserved = false))
+        assertEquals(CoreConnectivityAuthority.DENIED, decision.authority)
+    }
+
+    @Test
     fun captiveAndUnvalidatedWifiFailClosedInNativeCore() {
-        assertEquals(CoreConnectivityAuthority.DENIED, SafetyProtocolNative.evaluate(wifi(captive = true)).authority)
-        assertEquals(CoreConnectivityAuthority.DENIED, SafetyProtocolNative.evaluate(wifi(validated = false)).authority)
+        assertEquals(
+            CoreConnectivityAuthority.DENIED,
+            SafetyProtocolNative.evaluate(wifi(captive = true), evidence()).authority,
+        )
+        assertEquals(
+            CoreConnectivityAuthority.DENIED,
+            SafetyProtocolNative.evaluate(wifi(validated = false), evidence()).authority,
+        )
     }
 
     @Test
@@ -62,14 +84,21 @@ class SafetyProtocolNativeIntegrationTest {
             validatedInternet = true,
             captivePortal = false,
             security = WifiSecurity.NOT_APPLICABLE,
-            protectedTunnelReady = false,
             contradictoryEvidence = false,
             hardDrift = false,
         )
-        assertEquals(CoreConnectivityAuthority.DENIED, SafetyProtocolNative.evaluate(cellular).authority)
+        assertEquals(
+            CoreConnectivityAuthority.DENIED,
+            SafetyProtocolNative.evaluate(cellular, evidence(capture = false, osObserved = false, authenticated = false)).authority,
+        )
         assertEquals(
             CoreConnectivityAuthority.CELLULAR_FALLBACK,
-            SafetyProtocolNative.evaluate(cellular, allowCellularFallback = true, remainingCellularBudgetMb = 5).authority,
+            SafetyProtocolNative.evaluate(
+                cellular,
+                evidence(capture = false, osObserved = false, authenticated = false),
+                allowCellularFallback = true,
+                remainingCellularBudgetMb = 5,
+            ).authority,
         )
     }
 }

@@ -86,3 +86,9 @@ The promoted build produces:
 - x86_64 from Rust target x86_64-linux-android
 
 No JNI helper crate is required; the exported surface uses primitive JNI-compatible values only.
+
+## v0.3 Android enforcement derivation
+
+The JNI ABI still contains the primitive `protected_tunnel_ready` input for ABI compatibility, but the Android public API no longer accepts that value from `RawAndroidNetworkObservation`. It is derived internally from `TunnelEnforcementEvidence`.
+
+The current v0.3 runtime evidence sets `protectedSessionAuthenticated=false`, so the drop-only VpnService shell cannot by itself authorize `ProtectedTransport` forwarding. A later authenticated transport implementation must establish that evidence before protected forwarding can be promoted.

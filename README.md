@@ -47,3 +47,5 @@ This repository is an independent public reference implementation of SafetyProto
 Experimental protocol foundation. Not yet a production VPN, network manager, anonymity system, carrier replacement, or authorization to access networks without permission.
 
 Copyright © 2026 Val Rukhaylo / Altru.dev.
+
+See `docs/VPN-ENFORCEMENT.md` for the experimental Android fail-closed enforcement shell.

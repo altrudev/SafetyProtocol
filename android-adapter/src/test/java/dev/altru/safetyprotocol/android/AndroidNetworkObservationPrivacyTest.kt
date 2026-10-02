@@ -14,7 +14,6 @@ class AndroidNetworkObservationPrivacyTest {
             validatedInternet = true,
             captivePortal = false,
             security = WifiSecurity.WPA2_OR_BETTER,
-            protectedTunnelReady = true,
             contradictoryEvidence = false,
             hardDrift = false,
         )
@@ -32,7 +31,6 @@ class AndroidNetworkObservationPrivacyTest {
             validatedInternet = true,
             captivePortal = false,
             security = WifiSecurity.OPEN,
-            protectedTunnelReady = true,
             contradictoryEvidence = false,
             hardDrift = false,
         )

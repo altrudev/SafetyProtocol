@@ -9,14 +9,13 @@ class AndroidNetworkSnapshotReader(context: Context) {
         context.applicationContext.getSystemService(ConnectivityManager::class.java)
 
     fun read(
-        protectedTunnelReady: Boolean,
         contradictoryEvidence: Boolean = false,
         hardDrift: Boolean = false,
     ): RawAndroidNetworkObservation {
         val network = connectivityManager.activeNetwork
-            ?: return emptyObservation(protectedTunnelReady, contradictoryEvidence, hardDrift)
+            ?: return emptyObservation(contradictoryEvidence, hardDrift)
         val capabilities = connectivityManager.getNetworkCapabilities(network)
-            ?: return emptyObservation(protectedTunnelReady, contradictoryEvidence, hardDrift)
+            ?: return emptyObservation(contradictoryEvidence, hardDrift)
 
         val transport = when {
             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> Transport.WIFI
@@ -33,14 +32,12 @@ class AndroidNetworkSnapshotReader(context: Context) {
             validatedInternet = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
             captivePortal = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL),
             security = if (transport == Transport.WIFI) WifiSecurity.UNKNOWN else WifiSecurity.NOT_APPLICABLE,
-            protectedTunnelReady = protectedTunnelReady,
             contradictoryEvidence = contradictoryEvidence,
             hardDrift = hardDrift,
         )
     }
 
     private fun emptyObservation(
-        protectedTunnelReady: Boolean,
         contradictoryEvidence: Boolean,
         hardDrift: Boolean,
     ) = RawAndroidNetworkObservation(
@@ -50,7 +47,6 @@ class AndroidNetworkSnapshotReader(context: Context) {
         validatedInternet = false,
         captivePortal = false,
         security = WifiSecurity.NOT_APPLICABLE,
-        protectedTunnelReady = protectedTunnelReady,
         contradictoryEvidence = contradictoryEvidence,
         hardDrift = hardDrift,
     )

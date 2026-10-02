@@ -68,3 +68,16 @@ With AGP 9.4.1 on Gradle 9.8, Gradle reports an upstream deprecation involving C
 
 
 The Rust release profile strips the generated Android shared libraries before AAR packaging. AGP may report that it cannot strip them again; direct ELF inspection verifies the promoted ARM64 and x86_64 libraries are already stripped and contain no debug sections.
+
+## Enforcement shell
+
+The Android adapter now includes the v0.3 fail-closed `VpnService` shell documented in `docs/VPN-ENFORCEMENT.md`. The service captures IPv4 and IPv6 default routes and drops packets locally. It does not yet forward traffic to an authenticated protected transport.
+
+Runtime evidence is kept separate from raw network observations; ordinary Android network state can no longer assert that a protected tunnel is ready.
+
+
+## v0.3 enforcement shell
+
+The Android adapter now includes an experimental VpnService fail-closed capture shell. Raw network observations no longer carry a caller-supplied protected-tunnel-ready field. Enforcement evidence is owned by the VPN runtime and documented in docs/VPN-ENFORCEMENT-v0.3.md.
+
+The v0.3 service captures full IPv4/IPv6 default routes and drops captured packets. It does not yet forward traffic or authenticate a remote protected transport, so Wi-Fi cannot be promoted to ProtectedTransport by the runtime in this slice.

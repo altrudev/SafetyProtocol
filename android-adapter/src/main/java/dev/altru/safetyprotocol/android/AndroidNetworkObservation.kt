@@ -15,7 +15,6 @@ data class RawAndroidNetworkObservation(
     val validatedInternet: Boolean,
     val captivePortal: Boolean,
     val security: WifiSecurity,
-    val protectedTunnelReady: Boolean,
     val contradictoryEvidence: Boolean,
     val hardDrift: Boolean,
 )
@@ -27,7 +26,6 @@ data class AndroidNetworkObservation(
     val validatedInternet: Boolean,
     val captivePortal: Boolean,
     val protectedTunnelRequired: Boolean,
-    val protectedTunnelReady: Boolean,
     val localNetworkAuthority: Boolean,
     val directDnsAuthority: Boolean,
     val recommendation: AdapterRecommendation,
@@ -42,9 +40,7 @@ object AndroidNetworkObservationMapper {
             else -> NetworkClass.OTHER_UNTRUSTED
         }
 
-        val protectedTunnelRequired = raw.transport == Transport.WIFI
-        val unsafe = raw.contradictoryEvidence || raw.hardDrift ||
-            (protectedTunnelRequired && !raw.protectedTunnelReady)
+        val unsafe = raw.contradictoryEvidence || raw.hardDrift
 
         return AndroidNetworkObservation(
             networkClass = networkClass,
@@ -52,8 +48,7 @@ object AndroidNetworkObservationMapper {
             familiarityObserved = raw.ssidKnown,
             validatedInternet = raw.validatedInternet,
             captivePortal = raw.captivePortal,
-            protectedTunnelRequired = protectedTunnelRequired,
-            protectedTunnelReady = raw.protectedTunnelReady,
+            protectedTunnelRequired = raw.transport == Transport.WIFI,
             localNetworkAuthority = false,
             directDnsAuthority = false,
             recommendation = if (unsafe) AdapterRecommendation.DENY else AdapterRecommendation.FORWARD_TO_POLICY,
