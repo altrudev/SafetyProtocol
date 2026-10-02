@@ -77,6 +77,7 @@ jar tf "$tmp/classes.jar" | grep -q 'PacketMetadataParser.class'
 jar tf "$tmp/classes.jar" | grep -q 'PacketFlowPolicy.class'
 jar tf "$tmp/classes.jar" | grep -q 'DestinationPolicy.class'
 jar tf "$tmp/classes.jar" | grep -q 'DestinationRule.class'
+jar tf "$tmp/classes.jar" | grep -q 'ForwardingExecutor.class'
     rm -rf "$tmp"
     trap - EXIT
 fi
@@ -267,6 +268,29 @@ fi
 if grep -RInE 'forwardingActive[[:space:]]*=[[:space:]]*true' android-adapter/src/main/java; then
   echo "Forwarding execution must remain disabled in v0.8" >&2
   exit 42
+fi
+
+echo "== Loopback executor v0.9 boundary =="
+EXECUTOR="android-adapter/src/main/java/dev/altru/safetyprotocol/android/ForwardingExecutor.kt"
+MAIN_SRC="android-adapter/src/main/java"
+grep -Fq 'payload = frame.payload.copyOf()' "$EXECUTOR"
+grep -Fq 'SafetyProtocolVpnRuntime.snapshot()' "$EXECUTOR"
+grep -Fq 'ForwardingGate.evaluate(' "$EXECUTOR"
+grep -Fq 'System.nanoTime() / 1_000_000L' "$EXECUTOR"
+grep -Fq 'exactFrame.sequence <= last' "$EXECUTOR"
+grep -Fq 'poisoned = true' "$EXECUTOR"
+grep -Fq 'ForwardingExecutionReason.EXECUTOR_POISONED' "$EXECUTOR"
+if grep -RIn 'ForwardingExecutor(' "$MAIN_SRC" --exclude='ForwardingExecutor.kt'; then
+  echo "Production ForwardingExecutor call site found before v0.9 promotion boundary" >&2
+  exit 43
+fi
+if grep -RIn ': ForwardingFrameSink' "$MAIN_SRC" --exclude='ForwardingExecutor.kt'; then
+  echo "Production ForwardingFrameSink implementation found before v0.9 promotion boundary" >&2
+  exit 44
+fi
+if grep -RInE 'forwardingActive[[:space:]]*=[[:space:]]*true' "$MAIN_SRC"; then
+  echo "Real forwarding activation must remain disabled in v0.9" >&2
+  exit 45
 fi
 
 echo "== Diff hygiene =="
