@@ -57,18 +57,20 @@ trap 'rm -rf "$tmp"' EXIT
 unzip -q "$AAR" classes.jar -d "$tmp"
 jar tf "$tmp/classes.jar" | grep -q 'SafetyProtocolVpnService.class'
 jar tf "$tmp/classes.jar" | grep -q 'VpnEnforcementPolicy.class'
+jar tf "$tmp/classes.jar" | grep -q 'PinnedTlsProtectedTransport.class'
 rm -rf "$tmp"
 trap - EXIT
 
 echo "== Android permission/service boundary =="
 manifest="android-adapter/src/main/AndroidManifest.xml"
 grep -Fq 'android.permission.ACCESS_NETWORK_STATE' "$manifest"
+grep -Fq 'android.permission.INTERNET' "$manifest"
 grep -Fq 'android.permission.FOREGROUND_SERVICE' "$manifest"
 grep -Fq 'android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED' "$manifest"
 grep -Fq 'android.permission.BIND_VPN_SERVICE' "$manifest"
 grep -Fq 'android:foregroundServiceType="systemExempted"' "$manifest"
 grep -Fq 'android.net.VpnService.SUPPORTS_ALWAYS_ON' "$manifest"
-if grep -Eq 'ACCESS_FINE_LOCATION|ACCESS_COARSE_LOCATION|NEARBY_WIFI_DEVICES|android.permission.INTERNET|SCHEDULE_EXACT_ALARM|USE_EXACT_ALARM' "$manifest"; then
+if grep -Eq 'ACCESS_FINE_LOCATION|ACCESS_COARSE_LOCATION|NEARBY_WIFI_DEVICES|SCHEDULE_EXACT_ALARM|USE_EXACT_ALARM' "$manifest"; then
   echo "Unexpected library permission" >&2
   exit 20
 fi
@@ -132,14 +134,30 @@ if grep -RIn 'protectedTunnelReady' "$RAW_OBS" "$SNAPSHOT"; then
   exit 30
 fi
 
-if grep -Eq 'ACCESS_FINE_LOCATION|ACCESS_COARSE_LOCATION|NEARBY_WIFI_DEVICES|android.permission.INTERNET' "$MANIFEST"; then
-  echo "Unexpected permission in VPN v0.3 manifest" >&2
+if grep -Eq 'ACCESS_FINE_LOCATION|ACCESS_COARSE_LOCATION|NEARBY_WIFI_DEVICES' "$MANIFEST"; then
+  echo "Unexpected location/nearby permission" >&2
   exit 31
 fi
 
 if grep -RInE 'FORWARD|forwardPacket' android-adapter/src/main/java/dev/altru/safetyprotocol/android/VpnEnforcement.kt "$VPN_SERVICE"; then
   echo "v0.3 must not expose packet forwarding" >&2
   exit 32
+fi
+
+echo "== Protected transport v0.4 boundary =="
+TRANSPORT="android-adapter/src/main/java/dev/altru/safetyprotocol/android/ProtectedTransport.kt"
+grep -Fq 'socketProtector.protect(rawSocket)' "$TRANSPORT"
+grep -Fq 'endpointIdentificationAlgorithm = "HTTPS"' "$TRANSPORT"
+grep -Fq 'MessageDigest.getInstance("SHA-256")' "$TRANSPORT"
+grep -Fq 'MessageDigest.isEqual(endpoint.spkiSha256, actualPin)' "$TRANSPORT"
+grep -Fq 'forwardingAuthorized: Boolean = false' "$TRANSPORT"
+if grep -RInE 'TrustManager|HostnameVerifier|ALLOW_ALL|trustAll|setDefaultHostnameVerifier' "$TRANSPORT"; then
+  echo "Custom/permissive TLS trust surface found" >&2
+  exit 33
+fi
+if grep -RInE 'protectedSessionAuthenticated[[:space:]]*=[[:space:]]*true' android-adapter/src/main/java; then
+  echo "v0.4 must not promote authenticated establishment into runtime tunnel readiness" >&2
+  exit 34
 fi
 
 echo "== Diff hygiene =="
