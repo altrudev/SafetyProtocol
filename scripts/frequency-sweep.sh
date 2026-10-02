@@ -58,6 +58,9 @@ unzip -q "$AAR" classes.jar -d "$tmp"
 jar tf "$tmp/classes.jar" | grep -q 'SafetyProtocolVpnService.class'
 jar tf "$tmp/classes.jar" | grep -q 'VpnEnforcementPolicy.class'
 jar tf "$tmp/classes.jar" | grep -q 'PinnedTlsProtectedTransport.class'
+jar tf "$tmp/classes.jar" | grep -q 'TransportFrameCodec.class'
+jar tf "$tmp/classes.jar" | grep -q 'TransportLivenessTracker.class'
+jar tf "$tmp/classes.jar" | grep -q 'TransportSessionReadiness.class'
 rm -rf "$tmp"
 trap - EXIT
 
@@ -158,6 +161,26 @@ fi
 if grep -RInE 'protectedSessionAuthenticated[[:space:]]*=[[:space:]]*true' android-adapter/src/main/java; then
   echo "v0.4 must not promote authenticated establishment into runtime tunnel readiness" >&2
   exit 34
+fi
+
+echo "== Framed transport/liveness v0.5 boundary =="
+FRAME="android-adapter/src/main/java/dev/altru/safetyprotocol/android/TransportFrame.kt"
+LIVE="android-adapter/src/main/java/dev/altru/safetyprotocol/android/TransportLiveness.kt"
+READY="android-adapter/src/main/java/dev/altru/safetyprotocol/android/TransportSessionReadiness.kt"
+grep -Fq 'const val MAX_PAYLOAD_BYTES = 64 * 1024' "$FRAME"
+grep -Fq 'const val HEADER_BYTES = 20' "$FRAME"
+grep -Fq 'private const val MAGIC = 0x53504631' "$FRAME"
+grep -Fq 'SecureRandom()' "$LIVE"
+grep -Fq 'MessageDigest.isEqual(expected.nonce, frame.payload)' "$LIVE"
+grep -Fq 'establishment.authenticated && liveness.fresh' "$READY"
+grep -Fq 'forwardingAuthorized = false' "$READY"
+if grep -RInE 'protectedSessionAuthenticated[[:space:]]*=[[:space:]]*true' android-adapter/src/main/java; then
+  echo "v0.5 must not promote framed liveness into VPN runtime readiness" >&2
+  exit 35
+fi
+if grep -RInE 'tunnel(Input|Output)|tun(Input|Output)|write.*tunnel|write.*tun' android-adapter/src/main/java/dev/altru/safetyprotocol/android/TransportFrame.kt android-adapter/src/main/java/dev/altru/safetyprotocol/android/TransportLiveness.kt android-adapter/src/main/java/dev/altru/safetyprotocol/android/TransportSessionReadiness.kt; then
+  echo "v0.5 framing/liveness layer must not implement TUN packet forwarding" >&2
+  exit 36
 fi
 
 echo "== Diff hygiene =="
