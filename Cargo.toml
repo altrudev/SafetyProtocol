@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 description = "Clean public reference core for evidence-based connectivity authority"
+repository = "https://github.com/altrudev/SafetyProtocol"
+homepage = "https://altru.dev/progress/free-connectivity-is-not-the-same-as-trusted-connectivity"
+documentation = "https://github.com/altrudev/SafetyProtocol/tree/main/spec"
+readme = "README.md"
+keywords = ["security", "connectivity", "authority", "privacy", "zero-trust"]
+categories = ["network-programming", "authentication"]
 
 [lib]
 name = "safetyprotocol"

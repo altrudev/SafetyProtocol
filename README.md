@@ -1,5 +1,7 @@
 # Frequency SafetyProtocol
 
+Public repository: https://github.com/altrudev/SafetyProtocol
+
 Frequency SafetyProtocol is a small public reference protocol for granting external resources only the authority justified by current evidence.
 
 The first specialization is secure connectivity: trusted Wi-Fi, protected public transport, and bounded cellular fallback. The protocol core is intentionally domain-neutral so the same authority/evidence/drift model can later be adapted to MCP tools, APIs, browser origins, peripherals, package sources, compute, model endpoints and IoT.
