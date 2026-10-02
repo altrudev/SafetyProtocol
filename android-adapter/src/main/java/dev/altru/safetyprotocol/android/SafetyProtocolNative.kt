@@ -1,5 +1,7 @@
 package dev.altru.safetyprotocol.android
 
+import android.annotation.SuppressLint
+
 enum class CoreConnectivityAuthority(val code: Int) {
     TRUSTED(0),
     PROTECTED_TRANSPORT(1),
@@ -44,14 +46,21 @@ data class CoreConnectivityDecision(
     val protectedTunnelRequired: Boolean,
 )
 
-object SafetyProtocolNative {
+internal object SafetyProtocolNative {
     const val EXPECTED_ABI_VERSION = 1
 
     init {
+        loadNativeLibrary()
+    }
+
+    @SuppressLint("UnsafeDynamicallyLoadedCode")
+    private fun loadNativeLibrary() {
         val explicitPath = System.getProperty("safetyprotocol.native.path")
         if (explicitPath.isNullOrBlank()) {
             System.loadLibrary("safetyprotocol")
         } else {
+            // Host-JVM tests load the exact locally built Rust artifact by absolute path.
+            // Android production packaging never sets this property and uses loadLibrary above.
             System.load(explicitPath)
         }
     }
@@ -71,8 +80,9 @@ object SafetyProtocolNative {
         remainingCellularBudgetMb: Long,
     ): Long
 
-    fun evaluate(
+    internal fun evaluate(
         observation: RawAndroidNetworkObservation,
+        enforcementEvidence: TunnelEnforcementEvidence,
         allowCellularFallback: Boolean = false,
         remainingCellularBudgetMb: Long = 0,
     ): CoreConnectivityDecision {
@@ -82,7 +92,7 @@ object SafetyProtocolNative {
             transport = observation.transport.nativeCode,
             validatedInternet = observation.validatedInternet.asNativeInt(),
             captivePortal = observation.captivePortal.asNativeInt(),
-            protectedTunnelReady = observation.protectedTunnelReady.asNativeInt(),
+            protectedTunnelReady = enforcementEvidence.protectedTunnelReady.asNativeInt(),
             contradictoryEvidence = observation.contradictoryEvidence.asNativeInt(),
             hardDrift = observation.hardDrift.asNativeInt(),
             allowCellularFallback = allowCellularFallback.asNativeInt(),
