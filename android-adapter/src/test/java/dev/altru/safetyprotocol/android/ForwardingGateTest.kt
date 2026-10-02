@@ -46,7 +46,7 @@ class ForwardingGateTest {
     private val data = TransportFrame(
         type = TransportFrameType.DATA,
         sequence = 10,
-        payload = byteArrayOf(0x45, 0x00, 0x00, 0x14),
+        payload = publicIpv4TcpPacket(443),
     )
 
     @Test
@@ -150,6 +150,51 @@ class ForwardingGateTest {
             runtime, decision, endpoint, endpoint, data, nowMs = 1_000,
         )
         assertEquals(ForwardingGateReason.PROTECTED_SESSION_NOT_READY, result.reason)
+    }
+
+    private fun publicIpv4TcpPacket(destinationPort: Int): ByteArray {
+        val packet = ByteArray(40)
+        packet[0] = 0x45
+        packet[2] = 0
+        packet[3] = 40
+        packet[8] = 64
+        packet[9] = 6
+        packet[12] = 10
+        packet[13] = 0
+        packet[14] = 0
+        packet[15] = 2
+        packet[16] = 8
+        packet[17] = 8
+        packet[18] = 8
+        packet[19] = 8
+        packet[20] = 0x30
+        packet[21] = 0x39
+        packet[22] = (destinationPort ushr 8).toByte()
+        packet[23] = destinationPort.toByte()
+        packet[32] = 0x50
+        return packet
+    }
+
+    @Test
+    fun privateInnerDestinationDropsBeforeForwardingEligibility() {
+        val payload = publicIpv4TcpPacket(443)
+        payload[16] = 192.toByte()
+        payload[17] = 168.toByte()
+        payload[18] = 1
+        payload[19] = 10
+        val privateData = TransportFrame(TransportFrameType.DATA, 11, payload)
+        val result = ForwardingGate.evaluate(runtime, decision, endpoint, endpoint, privateData, nowMs = 500)
+        assertEquals(ForwardingGateReason.DATA_FLOW_NOT_AUTHORIZED, result.reason)
+        assertEquals(PacketFlowReason.LOCAL_DESTINATION_NOT_AUTHORIZED, result.packetFlowReason)
+        assertFalse(result.eligible)
+    }
+
+    @Test
+    fun malformedInnerPacketDropsBeforeForwardingEligibility() {
+        val malformed = TransportFrame(TransportFrameType.DATA, 11, byteArrayOf(0x45, 0x00))
+        val result = ForwardingGate.evaluate(runtime, decision, endpoint, endpoint, malformed, nowMs = 500)
+        assertEquals(ForwardingGateReason.PACKET_PARSE_REJECTED, result.reason)
+        assertFalse(result.eligible)
     }
 
 }

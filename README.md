@@ -64,3 +64,8 @@ SafetyProtocol now includes a bounded SPF1 transport frame format plus replay-re
 ## Constrained forwarding gate v0.6
 
 SafetyProtocol now composes TUN capture, OS VPN corroboration, expiring authenticated-session readiness, Rust PROTECTED_TRANSPORT authority, exact narrow capability scope, authenticated relay binding, and bounded DATA frames into a fail-closed forwarding-eligibility decision. Forwarding execution remains disabled pending packet-level destination/data-flow enforcement. See docs/CONSTRAINED-FORWARDING-GATE-v0.6.md.
+
+
+## Packet metadata and flow policy v0.7
+
+SafetyProtocol now parses bounded IPv4/IPv6 packet metadata before a DATA frame can become forwarding-eligible. Malformed, fragmented, local/private, link-local, loopback, multicast, reserved, and unsupported-protocol traffic fails closed. Forwarding execution remains disabled. See docs/PACKET-FLOW-POLICY-v0.7.md.

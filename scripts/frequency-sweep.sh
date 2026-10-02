@@ -73,6 +73,8 @@ if [[ "$MODE" == "full" ]]; then
     jar tf "$tmp/classes.jar" | grep -q 'TransportLivenessTracker.class'
     jar tf "$tmp/classes.jar" | grep -q 'TransportSessionReadiness.class'
     jar tf "$tmp/classes.jar" | grep -q 'ForwardingGate.class'
+jar tf "$tmp/classes.jar" | grep -q 'PacketMetadataParser.class'
+jar tf "$tmp/classes.jar" | grep -q 'PacketFlowPolicy.class'
     rm -rf "$tmp"
     trap - EXIT
 fi
@@ -220,6 +222,30 @@ fi
 if grep -RInE 'tunnel(Output|Input).*write|tunnelInterface.*write|FileOutputStream.*tunnel' android-adapter/src/main/java; then
   echo "Unexpected TUN forwarding implementation found in v0.6" >&2
   exit 38
+fi
+
+echo "== Packet flow policy v0.7 boundary =="
+PACKET="android-adapter/src/main/java/dev/altru/safetyprotocol/android/PacketMetadata.kt"
+FLOW="android-adapter/src/main/java/dev/altru/safetyprotocol/android/PacketFlowPolicy.kt"
+GATE="android-adapter/src/main/java/dev/altru/safetyprotocol/android/ForwardingGate.kt"
+grep -Fq 'const val MAX_PACKET_BYTES = 65_535' "$PACKET"
+grep -Fq 'PacketParseFailure.FRAGMENTED_PACKET' "$PACKET"
+grep -Fq 'PacketParseFailure.UNSUPPORTED_EXTENSION_HEADER' "$PACKET"
+grep -Fq 'DestinationScope.LOCAL_PRIVATE' "$FLOW"
+grep -Fq 'DestinationScope.LINK_LOCAL' "$FLOW"
+grep -Fq 'DestinationScope.LOOPBACK' "$FLOW"
+grep -Fq 'DestinationScope.MULTICAST' "$FLOW"
+grep -Fq 'PacketMetadataParser.parse(frame.payload)' "$GATE"
+grep -Fq 'PacketFlowPolicy.evaluate(parsed.metadata)' "$GATE"
+grep -Fq 'ForwardingGateReason.PACKET_PARSE_REJECTED' "$GATE"
+grep -Fq 'ForwardingGateReason.DATA_FLOW_NOT_AUTHORIZED' "$GATE"
+if grep -RInE 'forwardingActive[[:space:]]*=[[:space:]]*true' android-adapter/src/main/java; then
+  echo "Forwarding execution must remain disabled in v0.7" >&2
+  exit 39
+fi
+if grep -RInE 'FileOutputStream.*tunnel|tunnelInterface.*write|write.*tunnelInterface' android-adapter/src/main/java; then
+  echo "Unexpected TUN output path found in v0.7" >&2
+  exit 40
 fi
 
 echo "== Diff hygiene =="
