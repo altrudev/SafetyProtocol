@@ -89,6 +89,11 @@ class ProtectedTransportSession internal constructor(
     val authenticatedAtEstablishment: Boolean
         get() = evidence.authenticated
 
+    fun openFramedChannel(): FramedTransportChannel {
+        check(authenticatedAtEstablishment) { "Transport session is not authenticated" }
+        return FramedTransportChannel(socket.inputStream, socket.outputStream)
+    }
+
     override fun close() {
         socket.close()
     }

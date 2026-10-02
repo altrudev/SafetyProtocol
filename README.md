@@ -54,3 +54,8 @@ See `docs/VPN-ENFORCEMENT.md` for the experimental Android fail-closed enforceme
 ## Protected transport v0.4
 
 The Android adapter now includes an experimental protected TLS session primitive. It protects the underlying socket from the VPN loop, uses platform TLS hostname verification, and requires a configured SHA-256 SPKI pin. Authenticated establishment does not authorize forwarding and does not yet promote runtime tunnel readiness. See docs/PROTECTED-TRANSPORT-v0.4.md.
+
+
+## Framed transport and liveness v0.5
+
+SafetyProtocol now includes a bounded SPF1 transport frame format plus replay-resistant PING/PONG liveness evidence. Authenticated establishment and fresh liveness can compose into protected-session readiness evidence, but the VPN runtime is not promoted and packet forwarding remains disabled. See docs/FRAMED-LIVENESS-v0.5.md.
