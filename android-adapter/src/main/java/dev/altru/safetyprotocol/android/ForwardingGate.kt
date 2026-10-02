@@ -18,11 +18,15 @@ internal enum class ForwardingGateReason {
     ENDPOINT_BINDING_MISMATCH,
     NOT_DATA_FRAME,
     EMPTY_DATA,
+    PACKET_PARSE_REJECTED,
+    DATA_FLOW_NOT_AUTHORIZED,
 }
 
 internal data class ForwardingGateDecision(
     val disposition: ForwardingGateDisposition,
     val reason: ForwardingGateReason,
+    val packetMetadata: PacketMetadata? = null,
+    val packetFlowReason: PacketFlowReason? = null,
     val forwardingActive: Boolean = false,
 ) {
     val eligible: Boolean
@@ -65,9 +69,27 @@ internal object ForwardingGate {
         if (frame.type != TransportFrameType.DATA) return drop(ForwardingGateReason.NOT_DATA_FRAME)
         if (frame.payload.isEmpty()) return drop(ForwardingGateReason.EMPTY_DATA)
 
+        val parsed = PacketMetadataParser.parse(frame.payload)
+        if (parsed !is PacketParseResult.Parsed) {
+            return drop(ForwardingGateReason.PACKET_PARSE_REJECTED)
+        }
+
+        val flow = PacketFlowPolicy.evaluate(parsed.metadata)
+        if (flow.disposition != PacketFlowDisposition.ALLOW_TO_FORWARDING_GATE) {
+            return ForwardingGateDecision(
+                disposition = ForwardingGateDisposition.DROP,
+                reason = ForwardingGateReason.DATA_FLOW_NOT_AUTHORIZED,
+                packetMetadata = parsed.metadata,
+                packetFlowReason = flow.reason,
+                forwardingActive = false,
+            )
+        }
+
         return ForwardingGateDecision(
             disposition = ForwardingGateDisposition.ELIGIBLE,
             reason = ForwardingGateReason.ELIGIBLE,
+            packetMetadata = parsed.metadata,
+            packetFlowReason = flow.reason,
             forwardingActive = false,
         )
     }
