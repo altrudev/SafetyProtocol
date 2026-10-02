@@ -1,0 +1,16 @@
+[package]
+name = "frequency-safetyprotocol"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Clean public reference core for evidence-based connectivity authority"
+
+[lib]
+name = "safetyprotocol"
+path = "src/lib.rs"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
