@@ -114,14 +114,45 @@ echo "== Cargo package =="
 cargo package --allow-dirty >/dev/null
 test "$(cargo tree --prefix none | wc -l)" -eq 1
 
+
+
+echo "== VPN v0.3 enforcement boundary =="
+VPN_SERVICE="android-adapter/src/main/java/dev/altru/safetyprotocol/android/SafetyProtocolVpnService.kt"
+RAW_OBS="android-adapter/src/main/java/dev/altru/safetyprotocol/android/AndroidNetworkObservation.kt"
+SNAPSHOT="android-adapter/src/main/java/dev/altru/safetyprotocol/android/AndroidNetworkSnapshotReader.kt"
+MANIFEST="android-adapter/src/main/AndroidManifest.xml"
+
+grep -Fq '.addRoute("0.0.0.0", 0)' "$VPN_SERVICE"
+grep -Fq '.addRoute("::", 0)' "$VPN_SERVICE"
+grep -Fq 'android.permission.BIND_VPN_SERVICE' "$MANIFEST"
+grep -Fq 'android:exported="false"' "$MANIFEST"
+
+if grep -RIn 'protectedTunnelReady' "$RAW_OBS" "$SNAPSHOT"; then
+  echo "Raw network observation must not assert protected-tunnel readiness" >&2
+  exit 30
+fi
+
+if grep -Eq 'ACCESS_FINE_LOCATION|ACCESS_COARSE_LOCATION|NEARBY_WIFI_DEVICES|android.permission.INTERNET' "$MANIFEST"; then
+  echo "Unexpected permission in VPN v0.3 manifest" >&2
+  exit 31
+fi
+
+if grep -RInE 'FORWARD|forwardPacket' android-adapter/src/main/java/dev/altru/safetyprotocol/android/VpnEnforcement.kt "$VPN_SERVICE"; then
+  echo "v0.3 must not expose packet forwarding" >&2
+  exit 32
+fi
+
 echo "== Diff hygiene =="
 git diff --check
 
+RUNTIME_STATUS="NOT VERIFIED"
 if [[ "${SAFETYPROTOCOL_RUNTIME_DEVICE:-0}" == "1" ]]; then
     echo "== Real Android runtime smoke =="
     scripts/android-vpn-runtime-smoke.sh
+    RUNTIME_STATUS="PASS"
 else
-    echo "== Real Android runtime smoke == NOT RUN (set SAFETYPROTOCOL_RUNTIME_DEVICE=1)"
+    echo "== Real Android runtime smoke == NOT VERIFIED (set SAFETYPROTOCOL_RUNTIME_DEVICE=1)"
 fi
 
-echo "Frequency sweep PASS"
+echo "Frequency static/build sweep PASS"
+echo "Frequency real-device VPN runtime: ${RUNTIME_STATUS}"
