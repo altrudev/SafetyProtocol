@@ -10,3 +10,6 @@
 build/
 android-adapter/build/
 local.properties
+
+# Generated Rust JNI libraries
+android-adapter/src/main/jniLibs/
