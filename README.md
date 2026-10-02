@@ -49,3 +49,8 @@ Experimental protocol foundation. Not yet a production VPN, network manager, ano
 Copyright © 2026 Val Rukhaylo / Altru.dev.
 
 See `docs/VPN-ENFORCEMENT.md` for the experimental Android fail-closed enforcement shell.
+
+
+## Protected transport v0.4
+
+The Android adapter now includes an experimental protected TLS session primitive. It protects the underlying socket from the VPN loop, uses platform TLS hostname verification, and requires a configured SHA-256 SPKI pin. Authenticated establishment does not authorize forwarding and does not yet promote runtime tunnel readiness. See docs/PROTECTED-TRANSPORT-v0.4.md.
