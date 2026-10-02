@@ -4,3 +4,9 @@
 .DS_Store
 .idea/
 .vscode/
+
+# Android / Gradle local outputs
+.gradle/
+build/
+android-adapter/build/
+local.properties

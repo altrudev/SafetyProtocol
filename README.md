@@ -30,6 +30,8 @@ Observation -> Evidence -> Policy Decision -> Effective Authority -> Action -> D
 
 The current Rust reference core has no third-party runtime dependencies. Connectivity is the first adapter/specialization.
 
+The experimental Android observation adapter is documented in docs/ANDROID-ADAPTER.md. It uses only ACCESS_NETWORK_STATE and cannot promote Android network observations into authenticated trust.
+
 Run:
 
     cargo test
