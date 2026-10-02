@@ -18,7 +18,7 @@ class TransportSessionReadinessTest {
     fun authenticationWithoutFreshLivenessIsNotReady() {
         val readiness = TransportSessionReadiness.evaluate(
             authenticated,
-            TransportLivenessSnapshot(false, null, null),
+            TransportLivenessSnapshot(false, null, null, null),
         )
         assertFalse(readiness.protectedSessionReady)
         assertFalse(readiness.forwardingAuthorized)
@@ -28,7 +28,7 @@ class TransportSessionReadinessTest {
     fun freshLivenessWithoutAuthenticationIsNotReady() {
         val readiness = TransportSessionReadiness.evaluate(
             ProtectedTransportEvidence(),
-            TransportLivenessSnapshot(true, 100, null),
+            TransportLivenessSnapshot(true, 100, 5_100, null),
         )
         assertFalse(readiness.protectedSessionReady)
     }
@@ -37,7 +37,7 @@ class TransportSessionReadinessTest {
     fun authenticationPlusFreshLivenessCanEstablishReadinessButNotForwarding() {
         val readiness = TransportSessionReadiness.evaluate(
             authenticated,
-            TransportLivenessSnapshot(true, 100, null),
+            TransportLivenessSnapshot(true, 100, 5_100, null),
         )
         assertTrue(readiness.protectedSessionReady)
         assertFalse(readiness.forwardingAuthorized)

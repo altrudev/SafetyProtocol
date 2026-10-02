@@ -8,16 +8,27 @@ object SafetyProtocolVpnRuntime {
 
     fun enforcement(): VpnEnforcementDecision = VpnEnforcementPolicy.evaluate(current)
 
-    fun evidence(): TunnelEnforcementEvidence {
+    fun evidence(nowMs: Long = monotonicNowMs()): TunnelEnforcementEvidence {
         val snapshot = current
         val enforcement = VpnEnforcementPolicy.evaluate(snapshot)
         return TunnelEnforcementEvidence(
             localCaptureEstablished = snapshot.captureEstablished,
             osVpnTransportObserved = snapshot.osVpnTransportObserved,
-            protectedSessionAuthenticated = false,
+            protectedSessionAuthenticated = snapshot.transportReadiness?.isReadyAt(nowMs) == true,
             sessionFailClosedVerified = enforcement.sessionFailClosedVerified,
             persistentFailClosedVerified = enforcement.persistentFailClosedVerified,
         )
+    }
+
+
+    @Synchronized
+    internal fun updateProtectedSession(readiness: TransportSessionReadiness) {
+        current = current.copy(transportReadiness = readiness)
+    }
+
+    @Synchronized
+    internal fun clearProtectedSession() {
+        current = current.copy(transportReadiness = null)
     }
 
     @Synchronized
@@ -29,4 +40,6 @@ object SafetyProtocolVpnRuntime {
     internal fun reset() {
         current = VpnRuntimeSnapshot()
     }
+
+    private fun monotonicNowMs(): Long = System.nanoTime() / 1_000_000L
 }
