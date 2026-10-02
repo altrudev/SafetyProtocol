@@ -4,6 +4,20 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+MODE="full"
+case "${1:-}" in
+  "")
+    ;;
+  --preflight)
+    MODE="preflight"
+    ;;
+  *)
+    echo "Usage: $0 [--preflight]" >&2
+    exit 64
+    ;;
+esac
+
+
 : "${ANDROID_SDK_ROOT:=$HOME/.local/android-sdk}"
 export ANDROID_SDK_ROOT
 export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
@@ -19,51 +33,49 @@ cargo fmt --check
 cargo test --quiet
 cargo clippy --all-targets --all-features -- -D warnings
 
-echo "== Android/JNI/enforcement tests =="
-gradle :android-adapter:testDebugUnitTest
+if [[ "$MODE" == "preflight" ]]; then
+    echo "== Android/JNI/enforcement preflight =="
+    gradle :android-adapter:testDebugUnitTest
+else
+    echo "== Android full build/test gate =="
+    gradle       :android-adapter:testDebugUnitTest       :android-adapter:lintDebug       :android-adapter:assembleRelease       :runtime-test-app:assembleDebug
+fi
 
-echo "== Android lint =="
-gradle :android-adapter:lintDebug
+if [[ "$MODE" == "full" ]]; then
+    echo "== Native architectures =="
+    ARM_LIB="android-adapter/src/main/jniLibs/arm64-v8a/libsafetyprotocol.so"
+    X86_LIB="android-adapter/src/main/jniLibs/x86_64/libsafetyprotocol.so"
+    test -f "$ARM_LIB"
+    test -f "$X86_LIB"
+    file "$ARM_LIB" | grep -Eq 'ARM aarch64|ARM64'
+    file "$X86_LIB" | grep -q 'x86-64'
+    file "$ARM_LIB" | grep -q 'stripped'
+    file "$X86_LIB" | grep -q 'stripped'
+    if readelf -S "$ARM_LIB" | grep -Eq '\.debug_|\.zdebug_'; then exit 24; fi
+    if readelf -S "$X86_LIB" | grep -Eq '\.debug_|\.zdebug_'; then exit 25; fi
 
-echo "== Android release AAR =="
-gradle :android-adapter:assembleRelease
+    echo "== JNI symbol boundary =="
+    readelf -Ws "$ARM_LIB" | grep -q 'Java_dev_altru_safetyprotocol_android_SafetyProtocolNative_nativeAbiVersion'
+    readelf -Ws "$ARM_LIB" | grep -q 'Java_dev_altru_safetyprotocol_android_SafetyProtocolNative_nativeEvaluateConnectivity'
 
-echo "== Runtime test app build =="
-gradle :runtime-test-app:assembleDebug
-
-echo "== Native architectures =="
-ARM_LIB="android-adapter/src/main/jniLibs/arm64-v8a/libsafetyprotocol.so"
-X86_LIB="android-adapter/src/main/jniLibs/x86_64/libsafetyprotocol.so"
-test -f "$ARM_LIB"
-test -f "$X86_LIB"
-file "$ARM_LIB" | grep -Eq 'ARM aarch64|ARM64'
-file "$X86_LIB" | grep -q 'x86-64'
-file "$ARM_LIB" | grep -q 'stripped'
-file "$X86_LIB" | grep -q 'stripped'
-if readelf -S "$ARM_LIB" | grep -Eq '\.debug_|\.zdebug_'; then exit 24; fi
-if readelf -S "$X86_LIB" | grep -Eq '\.debug_|\.zdebug_'; then exit 25; fi
-
-echo "== JNI symbol boundary =="
-readelf -Ws "$ARM_LIB" | grep -q 'Java_dev_altru_safetyprotocol_android_SafetyProtocolNative_nativeAbiVersion'
-readelf -Ws "$ARM_LIB" | grep -q 'Java_dev_altru_safetyprotocol_android_SafetyProtocolNative_nativeEvaluateConnectivity'
-
-echo "== AAR native/service contents =="
-AAR="android-adapter/build/outputs/aar/android-adapter-release.aar"
-test -f "$AAR"
-unzip -l "$AAR" | grep -q 'jni/arm64-v8a/libsafetyprotocol.so'
-unzip -l "$AAR" | grep -q 'jni/x86_64/libsafetyprotocol.so'
-tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
-unzip -q "$AAR" classes.jar -d "$tmp"
-jar tf "$tmp/classes.jar" | grep -q 'SafetyProtocolVpnService.class'
-jar tf "$tmp/classes.jar" | grep -q 'VpnEnforcementPolicy.class'
-jar tf "$tmp/classes.jar" | grep -q 'PinnedTlsProtectedTransport.class'
-jar tf "$tmp/classes.jar" | grep -q 'TransportFrameCodec.class'
-jar tf "$tmp/classes.jar" | grep -q 'TransportLivenessTracker.class'
-jar tf "$tmp/classes.jar" | grep -q 'TransportSessionReadiness.class'
-jar tf "$tmp/classes.jar" | grep -q 'ForwardingGate.class'
-rm -rf "$tmp"
-trap - EXIT
+    echo "== AAR native/service contents =="
+    AAR="android-adapter/build/outputs/aar/android-adapter-release.aar"
+    test -f "$AAR"
+    unzip -l "$AAR" | grep -q 'jni/arm64-v8a/libsafetyprotocol.so'
+    unzip -l "$AAR" | grep -q 'jni/x86_64/libsafetyprotocol.so'
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    unzip -q "$AAR" classes.jar -d "$tmp"
+    jar tf "$tmp/classes.jar" | grep -q 'SafetyProtocolVpnService.class'
+    jar tf "$tmp/classes.jar" | grep -q 'VpnEnforcementPolicy.class'
+    jar tf "$tmp/classes.jar" | grep -q 'PinnedTlsProtectedTransport.class'
+    jar tf "$tmp/classes.jar" | grep -q 'TransportFrameCodec.class'
+    jar tf "$tmp/classes.jar" | grep -q 'TransportLivenessTracker.class'
+    jar tf "$tmp/classes.jar" | grep -q 'TransportSessionReadiness.class'
+    jar tf "$tmp/classes.jar" | grep -q 'ForwardingGate.class'
+    rm -rf "$tmp"
+    trap - EXIT
+fi
 
 echo "== Android permission/service boundary =="
 manifest="android-adapter/src/main/AndroidManifest.xml"
@@ -116,9 +128,11 @@ if grep -RInE 'api[_-]?key|access[_-]?token|password|secret|https?://' android-a
   exit 23
 fi
 
-echo "== Cargo package =="
-cargo package --allow-dirty >/dev/null
-test "$(cargo tree --prefix none | wc -l)" -eq 1
+if [[ "$MODE" == "full" ]]; then
+    echo "== Cargo package =="
+    cargo package --allow-dirty >/dev/null
+    test "$(cargo tree --prefix none | wc -l)" -eq 1
+fi
 
 
 
@@ -212,13 +226,17 @@ echo "== Diff hygiene =="
 git diff --check
 
 RUNTIME_STATUS="NOT VERIFIED"
-if [[ "${SAFETYPROTOCOL_RUNTIME_DEVICE:-0}" == "1" ]]; then
-    echo "== Real Android runtime smoke =="
-    scripts/android-vpn-runtime-smoke.sh
-    RUNTIME_STATUS="PASS"
+if [[ "$MODE" == "full" ]]; then
+    if [[ "${SAFETYPROTOCOL_RUNTIME_DEVICE:-0}" == "1" ]]; then
+        echo "== Real Android runtime smoke =="
+        scripts/android-vpn-runtime-smoke.sh
+        RUNTIME_STATUS="PASS"
+    else
+        echo "== Real Android runtime smoke == NOT VERIFIED (set SAFETYPROTOCOL_RUNTIME_DEVICE=1)"
+    fi
+    echo "Frequency full sweep PASS"
+    echo "Frequency real-device VPN runtime: ${RUNTIME_STATUS}"
 else
-    echo "== Real Android runtime smoke == NOT VERIFIED (set SAFETYPROTOCOL_RUNTIME_DEVICE=1)"
+    echo "Frequency preflight PASS"
+    echo "Promotion/release gates intentionally deferred to full sweep"
 fi
-
-echo "Frequency static/build sweep PASS"
-echo "Frequency real-device VPN runtime: ${RUNTIME_STATUS}"
