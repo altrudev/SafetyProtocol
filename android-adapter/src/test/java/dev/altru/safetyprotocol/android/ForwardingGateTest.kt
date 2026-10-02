@@ -12,6 +12,12 @@ class ForwardingGateTest {
         sha256Hex = "11".repeat(32),
     )
 
+    private val allowPublic = DestinationPolicy(
+        listOf(DestinationRule.allow("8.8.8.0/24")),
+    )
+
+    private val denyAll = DestinationPolicy(emptyList())
+
     private val readiness = TransportSessionReadiness(
         authenticatedEstablishment = true,
         freshLiveness = true,
@@ -51,7 +57,7 @@ class ForwardingGateTest {
 
     @Test
     fun validEvidenceCanBecomeEligibleButNotActive() {
-        val result = ForwardingGate.evaluate(runtime, decision, endpoint, endpoint, data, nowMs = 500)
+        val result = ForwardingGate.evaluate(runtime, decision, endpoint, endpoint, allowPublic, data, nowMs = 500)
         assertEquals(ForwardingGateDisposition.ELIGIBLE, result.disposition)
         assertTrue(result.eligible)
         assertFalse(result.forwardingActive)
@@ -60,7 +66,7 @@ class ForwardingGateTest {
     @Test
     fun missingCaptureDrops() {
         val result = ForwardingGate.evaluate(
-            runtime.copy(captureEstablished = false), decision, endpoint, endpoint, data, nowMs = 500,
+            runtime.copy(captureEstablished = false), decision, endpoint, endpoint, allowPublic, data, nowMs = 500,
         )
         assertEquals(ForwardingGateReason.CAPTURE_NOT_ESTABLISHED, result.reason)
         assertFalse(result.eligible)
@@ -69,7 +75,7 @@ class ForwardingGateTest {
     @Test
     fun missingOsVpnCorroborationDrops() {
         val result = ForwardingGate.evaluate(
-            runtime.copy(osVpnTransportObserved = false), decision, endpoint, endpoint, data, nowMs = 500,
+            runtime.copy(osVpnTransportObserved = false), decision, endpoint, endpoint, allowPublic, data, nowMs = 500,
         )
         assertEquals(ForwardingGateReason.OS_VPN_NOT_CORROBORATED, result.reason)
     }
@@ -84,7 +90,7 @@ class ForwardingGateTest {
             forwardingAuthorized = false,
         )
         val result = ForwardingGate.evaluate(
-            runtime.copy(transportReadiness = stale), decision, endpoint, endpoint, data, nowMs = 500,
+            runtime.copy(transportReadiness = stale), decision, endpoint, endpoint, allowPublic, data, nowMs = 500,
         )
         assertEquals(ForwardingGateReason.PROTECTED_SESSION_NOT_READY, result.reason)
     }
@@ -92,14 +98,14 @@ class ForwardingGateTest {
     @Test
     fun wrongCoreAuthorityDrops() {
         val denied = decision.copy(authority = CoreConnectivityAuthority.DENIED)
-        val result = ForwardingGate.evaluate(runtime, denied, endpoint, endpoint, data, nowMs = 500)
+        val result = ForwardingGate.evaluate(runtime, denied, endpoint, endpoint, allowPublic, data, nowMs = 500)
         assertEquals(ForwardingGateReason.POLICY_NOT_AUTHORIZED, result.reason)
     }
 
     @Test
     fun overPrivilegedCoreAuthorityDrops() {
         val over = decision.copy(effective = decision.effective.copy(localNetwork = true))
-        val result = ForwardingGate.evaluate(runtime, over, endpoint, endpoint, data, nowMs = 500)
+        val result = ForwardingGate.evaluate(runtime, over, endpoint, endpoint, allowPublic, data, nowMs = 500)
         assertEquals(ForwardingGateReason.AUTHORITY_SCOPE_MISMATCH, result.reason)
     }
 
@@ -108,7 +114,7 @@ class ForwardingGateTest {
         val other = ProtectedTransportEndpoint.fromHexPin(
             host = "other.example", port = 443, sha256Hex = "11".repeat(32),
         )
-        val result = ForwardingGate.evaluate(runtime, decision, endpoint, other, data, nowMs = 500)
+        val result = ForwardingGate.evaluate(runtime, decision, endpoint, other, allowPublic, data, nowMs = 500)
         assertEquals(ForwardingGateReason.ENDPOINT_BINDING_MISMATCH, result.reason)
     }
 
@@ -117,28 +123,28 @@ class ForwardingGateTest {
         val otherPin = ProtectedTransportEndpoint.fromHexPin(
             host = "relay.example", port = 443, sha256Hex = "22".repeat(32),
         )
-        val result = ForwardingGate.evaluate(runtime, decision, endpoint, otherPin, data, nowMs = 500)
+        val result = ForwardingGate.evaluate(runtime, decision, endpoint, otherPin, allowPublic, data, nowMs = 500)
         assertEquals(ForwardingGateReason.ENDPOINT_BINDING_MISMATCH, result.reason)
     }
 
     @Test
     fun nonDataFrameDrops() {
         val ping = TransportFrame(TransportFrameType.PING, 10, ByteArray(TransportLivenessTracker.NONCE_BYTES))
-        val result = ForwardingGate.evaluate(runtime, decision, endpoint, endpoint, ping, nowMs = 500)
+        val result = ForwardingGate.evaluate(runtime, decision, endpoint, endpoint, allowPublic, ping, nowMs = 500)
         assertEquals(ForwardingGateReason.NOT_DATA_FRAME, result.reason)
     }
 
     @Test
     fun emptyDataFrameDrops() {
         val empty = TransportFrame(TransportFrameType.DATA, 10, ByteArray(0))
-        val result = ForwardingGate.evaluate(runtime, decision, endpoint, endpoint, empty, nowMs = 500)
+        val result = ForwardingGate.evaluate(runtime, decision, endpoint, endpoint, allowPublic, empty, nowMs = 500)
         assertEquals(ForwardingGateReason.EMPTY_DATA, result.reason)
     }
 
     @Test
     fun stoppedServiceDrops() {
         val result = ForwardingGate.evaluate(
-            runtime.copy(serviceRunning = false), decision, endpoint, endpoint, data, nowMs = 500,
+            runtime.copy(serviceRunning = false), decision, endpoint, endpoint, allowPublic, data, nowMs = 500,
         )
         assertEquals(ForwardingGateReason.SERVICE_NOT_RUNNING, result.reason)
     }
@@ -147,9 +153,45 @@ class ForwardingGateTest {
     @Test
     fun expiredReadinessDropsEvenIfStoredFlagsRemainTrue() {
         val result = ForwardingGate.evaluate(
-            runtime, decision, endpoint, endpoint, data, nowMs = 1_000,
+            runtime, decision, endpoint, endpoint, allowPublic, data, nowMs = 1_000,
         )
         assertEquals(ForwardingGateReason.PROTECTED_SESSION_NOT_READY, result.reason)
+    }
+
+    @Test
+    fun publicPacketWithoutExplicitDestinationAllowDrops() {
+        val result = ForwardingGate.evaluate(
+            runtime,
+            decision,
+            endpoint,
+            endpoint,
+            denyAll,
+            data,
+            nowMs = 500,
+        )
+        assertEquals(ForwardingGateReason.DESTINATION_POLICY_NOT_AUTHORIZED, result.reason)
+        assertFalse(result.eligible)
+    }
+
+    @Test
+    fun moreSpecificDestinationDenyOverridesBroaderAllowAtGate() {
+        val policy = DestinationPolicy(
+            listOf(
+                DestinationRule.allow("8.0.0.0/8"),
+                DestinationRule.deny("8.8.8.0/24"),
+            ),
+        )
+        val result = ForwardingGate.evaluate(
+            runtime,
+            decision,
+            endpoint,
+            endpoint,
+            policy,
+            data,
+            nowMs = 500,
+        )
+        assertEquals(ForwardingGateReason.DESTINATION_POLICY_NOT_AUTHORIZED, result.reason)
+        assertFalse(result.eligible)
     }
 
     private fun publicIpv4TcpPacket(destinationPort: Int): ByteArray {
@@ -183,7 +225,7 @@ class ForwardingGateTest {
         payload[18] = 1
         payload[19] = 10
         val privateData = TransportFrame(TransportFrameType.DATA, 11, payload)
-        val result = ForwardingGate.evaluate(runtime, decision, endpoint, endpoint, privateData, nowMs = 500)
+        val result = ForwardingGate.evaluate(runtime, decision, endpoint, endpoint, allowPublic, privateData, nowMs = 500)
         assertEquals(ForwardingGateReason.DATA_FLOW_NOT_AUTHORIZED, result.reason)
         assertEquals(PacketFlowReason.LOCAL_DESTINATION_NOT_AUTHORIZED, result.packetFlowReason)
         assertFalse(result.eligible)
@@ -192,7 +234,7 @@ class ForwardingGateTest {
     @Test
     fun malformedInnerPacketDropsBeforeForwardingEligibility() {
         val malformed = TransportFrame(TransportFrameType.DATA, 11, byteArrayOf(0x45, 0x00))
-        val result = ForwardingGate.evaluate(runtime, decision, endpoint, endpoint, malformed, nowMs = 500)
+        val result = ForwardingGate.evaluate(runtime, decision, endpoint, endpoint, allowPublic, malformed, nowMs = 500)
         assertEquals(ForwardingGateReason.PACKET_PARSE_REJECTED, result.reason)
         assertFalse(result.eligible)
     }

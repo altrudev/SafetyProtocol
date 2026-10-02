@@ -69,3 +69,8 @@ SafetyProtocol now composes TUN capture, OS VPN corroboration, expiring authenti
 ## Packet metadata and flow policy v0.7
 
 SafetyProtocol now parses bounded IPv4/IPv6 packet metadata before a DATA frame can become forwarding-eligible. Malformed, fragmented, local/private, link-local, loopback, multicast, reserved, and unsupported-protocol traffic fails closed. Forwarding execution remains disabled. See docs/PACKET-FLOW-POLICY-v0.7.md.
+
+
+## Explicit destination policy v0.8
+
+SafetyProtocol now requires an explicit IPv4/IPv6 CIDR allow decision after packet parsing and before forwarding eligibility. No matching allow rule means deny; longest-prefix matching applies and deny wins ties. Exact destination bytes remain transient in memory and are not persisted. Forwarding execution remains disabled. See docs/DESTINATION-POLICY-v0.8.md.
