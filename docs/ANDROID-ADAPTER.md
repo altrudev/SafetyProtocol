@@ -46,9 +46,9 @@ A non-denied result means only "forward this observation to policy." It is not a
 
 ## Current implementation limit
 
-This v0.2 slice is the Android observation adapter and safety gate. It is not yet a JNI/FFI binding to the Rust reference core, a VPN implementation, an auto-connect engine, or a production application.
+This v0.2 slice now includes a JNI binding to the shared Rust reference core. Android observations are evaluated by the Rust policy engine rather than by a second Kotlin policy implementation. The native ABI is documented in `docs/ANDROID-NATIVE-ABI.md`.
 
-The next integration slice should bind this observation contract to the shared core without duplicating policy semantics inside Android.
+It is not yet a VPN implementation, independent tunnel attestation/enforcement layer, auto-connect engine, or production application.
 
 ## Build
 
@@ -65,3 +65,6 @@ Or run:
 ## Tooling note
 
 With AGP 9.4.1 on Gradle 9.8, Gradle reports an upstream deprecation involving Configuration.setVisible(boolean). The adapter tests, lint and release build pass. This is retained as a build-tool compatibility observation for a future Gradle 10/11 migration; it is not currently a runtime or protocol warning.
+
+
+The Rust release profile strips the generated Android shared libraries before AAR packaging. AGP may report that it cannot strip them again; direct ELF inspection verifies the promoted ARM64 and x86_64 libraries are already stripped and contain no debug sections.

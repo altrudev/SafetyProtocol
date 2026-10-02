@@ -14,6 +14,7 @@ categories = ["network-programming", "authentication"]
 [lib]
 name = "safetyprotocol"
 path = "src/lib.rs"
+crate-type = ["rlib", "cdylib"]
 
 [profile.release]
 lto = true
