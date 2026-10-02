@@ -20,6 +20,7 @@ internal enum class ForwardingGateReason {
     EMPTY_DATA,
     PACKET_PARSE_REJECTED,
     DATA_FLOW_NOT_AUTHORIZED,
+    DESTINATION_POLICY_NOT_AUTHORIZED,
 }
 
 internal data class ForwardingGateDecision(
@@ -39,6 +40,7 @@ internal object ForwardingGate {
         policy: CoreConnectivityDecision,
         authenticatedEndpoint: ProtectedTransportEndpoint,
         candidateEndpoint: ProtectedTransportEndpoint,
+        destinationPolicy: DestinationPolicy,
         frame: TransportFrame,
         nowMs: Long,
     ): ForwardingGateDecision {
@@ -79,6 +81,17 @@ internal object ForwardingGate {
             return ForwardingGateDecision(
                 disposition = ForwardingGateDisposition.DROP,
                 reason = ForwardingGateReason.DATA_FLOW_NOT_AUTHORIZED,
+                packetMetadata = parsed.metadata,
+                packetFlowReason = flow.reason,
+                forwardingActive = false,
+            )
+        }
+
+        val destinationDecision = destinationPolicy.evaluate(parsed.metadata.destination)
+        if (destinationDecision.disposition != DestinationPolicyDisposition.ALLOW) {
+            return ForwardingGateDecision(
+                disposition = ForwardingGateDisposition.DROP,
+                reason = ForwardingGateReason.DESTINATION_POLICY_NOT_AUTHORIZED,
                 packetMetadata = parsed.metadata,
                 packetFlowReason = flow.reason,
                 forwardingActive = false,

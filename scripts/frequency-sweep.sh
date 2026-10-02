@@ -75,6 +75,8 @@ if [[ "$MODE" == "full" ]]; then
     jar tf "$tmp/classes.jar" | grep -q 'ForwardingGate.class'
 jar tf "$tmp/classes.jar" | grep -q 'PacketMetadataParser.class'
 jar tf "$tmp/classes.jar" | grep -q 'PacketFlowPolicy.class'
+jar tf "$tmp/classes.jar" | grep -q 'DestinationPolicy.class'
+jar tf "$tmp/classes.jar" | grep -q 'DestinationRule.class'
     rm -rf "$tmp"
     trap - EXIT
 fi
@@ -246,6 +248,25 @@ fi
 if grep -RInE 'FileOutputStream.*tunnel|tunnelInterface.*write|write.*tunnelInterface' android-adapter/src/main/java; then
   echo "Unexpected TUN output path found in v0.7" >&2
   exit 40
+fi
+
+echo "== Explicit destination policy v0.8 boundary =="
+DEST="android-adapter/src/main/java/dev/altru/safetyprotocol/android/DestinationPolicy.kt"
+GATE="android-adapter/src/main/java/dev/altru/safetyprotocol/android/ForwardingGate.kt"
+grep -Fq 'class DestinationPolicy(' "$DEST"
+grep -Fq 'DestinationPolicyReason.NO_MATCHING_ALLOW_RULE' "$DEST"
+grep -Fq 'val bestPrefix = matches.maxOf' "$DEST"
+grep -Fq 'val denyWins = strongest.any' "$DEST"
+grep -Fq 'private val networkBytes: ByteArray' "$DEST"
+grep -Fq 'destinationPolicy.evaluate(parsed.metadata.destination)' "$GATE"
+grep -Fq 'ForwardingGateReason.DESTINATION_POLICY_NOT_AUTHORIZED' "$GATE"
+if grep -RInE 'Log\.[vdiew].*(addressBytes|destination)|println\(.*(addressBytes|destination)' android-adapter/src/main/java; then
+  echo "Exact destination logging surface found" >&2
+  exit 41
+fi
+if grep -RInE 'forwardingActive[[:space:]]*=[[:space:]]*true' android-adapter/src/main/java; then
+  echo "Forwarding execution must remain disabled in v0.8" >&2
+  exit 42
 fi
 
 echo "== Diff hygiene =="

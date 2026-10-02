@@ -25,10 +25,13 @@ enum class DestinationScope {
 data class PacketMetadata(
     val ipVersion: IpVersion,
     val protocol: PacketTransportProtocol,
-    val destinationScope: DestinationScope,
+    val destination: PacketDestination,
     val destinationPort: Int?,
     val packetLength: Int,
-)
+) {
+    val destinationScope: DestinationScope
+        get() = destination.scope
+}
 
 enum class PacketParseFailure {
     EMPTY_PACKET,
@@ -100,12 +103,17 @@ object PacketMetadataParser {
             return PacketParseResult.Rejected(PacketParseFailure.INVALID_DESTINATION_PORT)
         }
 
-        val destination = packet.copyOfRange(16, 20)
+        val destinationBytes = packet.copyOfRange(16, 20)
+        val destination = PacketDestination.fromBytes(
+            IpVersion.IPV4,
+            destinationBytes,
+            classifyIpv4(destinationBytes),
+        )
         return PacketParseResult.Parsed(
             PacketMetadata(
                 ipVersion = IpVersion.IPV4,
                 protocol = protocol,
-                destinationScope = classifyIpv4(destination),
+                destination = destination,
                 destinationPort = destinationPort,
                 packetLength = totalLength,
             ),
@@ -148,12 +156,17 @@ object PacketMetadataParser {
             return PacketParseResult.Rejected(PacketParseFailure.INVALID_DESTINATION_PORT)
         }
 
-        val destination = packet.copyOfRange(24, 40)
+        val destinationBytes = packet.copyOfRange(24, 40)
+        val destination = PacketDestination.fromBytes(
+            IpVersion.IPV6,
+            destinationBytes,
+            classifyIpv6(destinationBytes),
+        )
         return PacketParseResult.Parsed(
             PacketMetadata(
                 ipVersion = IpVersion.IPV6,
                 protocol = protocol,
-                destinationScope = classifyIpv6(destination),
+                destination = destination,
                 destinationPort = destinationPort,
                 packetLength = totalLength,
             ),

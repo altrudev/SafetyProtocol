@@ -32,10 +32,19 @@ class PacketFlowPolicyTest {
 
     @Test
     fun unsupportedProtocolIsDenied() {
-        val m = PacketMetadata(IpVersion.IPV4, PacketTransportProtocol.OTHER, DestinationScope.PUBLIC, null, 40)
+        val m = PacketMetadata(IpVersion.IPV4, PacketTransportProtocol.OTHER, PacketDestination.fromLiteral("8.8.8.8", DestinationScope.PUBLIC), null, 40)
         assertEquals(PacketFlowReason.UNSUPPORTED_TRANSPORT_PROTOCOL, PacketFlowPolicy.evaluate(m).reason)
     }
 
     private fun metadata(scope: DestinationScope, protocol: PacketTransportProtocol, port: Int?) =
-        PacketMetadata(IpVersion.IPV4, protocol, scope, port, 40)
+        PacketMetadata(
+            IpVersion.IPV4,
+            protocol,
+            PacketDestination.fromLiteral(
+                if (scope == DestinationScope.PUBLIC) "8.8.8.8" else "10.0.0.1",
+                scope,
+            ),
+            port,
+            40,
+        )
 }
