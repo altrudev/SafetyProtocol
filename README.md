@@ -59,3 +59,8 @@ The Android adapter now includes an experimental protected TLS session primitive
 ## Framed transport and liveness v0.5
 
 SafetyProtocol now includes a bounded SPF1 transport frame format plus replay-resistant PING/PONG liveness evidence. Authenticated establishment and fresh liveness can compose into protected-session readiness evidence, but the VPN runtime is not promoted and packet forwarding remains disabled. See docs/FRAMED-LIVENESS-v0.5.md.
+
+
+## Constrained forwarding gate v0.6
+
+SafetyProtocol now composes TUN capture, OS VPN corroboration, expiring authenticated-session readiness, Rust PROTECTED_TRANSPORT authority, exact narrow capability scope, authenticated relay binding, and bounded DATA frames into a fail-closed forwarding-eligibility decision. Forwarding execution remains disabled pending packet-level destination/data-flow enforcement. See docs/CONSTRAINED-FORWARDING-GATE-v0.6.md.

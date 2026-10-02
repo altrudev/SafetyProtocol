@@ -61,6 +61,7 @@ jar tf "$tmp/classes.jar" | grep -q 'PinnedTlsProtectedTransport.class'
 jar tf "$tmp/classes.jar" | grep -q 'TransportFrameCodec.class'
 jar tf "$tmp/classes.jar" | grep -q 'TransportLivenessTracker.class'
 jar tf "$tmp/classes.jar" | grep -q 'TransportSessionReadiness.class'
+jar tf "$tmp/classes.jar" | grep -q 'ForwardingGate.class'
 rm -rf "$tmp"
 trap - EXIT
 
@@ -181,6 +182,30 @@ fi
 if grep -RInE 'tunnel(Input|Output)|tun(Input|Output)|write.*tunnel|write.*tun' android-adapter/src/main/java/dev/altru/safetyprotocol/android/TransportFrame.kt android-adapter/src/main/java/dev/altru/safetyprotocol/android/TransportLiveness.kt android-adapter/src/main/java/dev/altru/safetyprotocol/android/TransportSessionReadiness.kt; then
   echo "v0.5 framing/liveness layer must not implement TUN packet forwarding" >&2
   exit 36
+fi
+
+echo "== Constrained forwarding gate v0.6 boundary =="
+GATE="android-adapter/src/main/java/dev/altru/safetyprotocol/android/ForwardingGate.kt"
+RUNTIME="android-adapter/src/main/java/dev/altru/safetyprotocol/android/SafetyProtocolVpnRuntime.kt"
+READINESS="android-adapter/src/main/java/dev/altru/safetyprotocol/android/TransportSessionReadiness.kt"
+VPN_SERVICE="android-adapter/src/main/java/dev/altru/safetyprotocol/android/SafetyProtocolVpnService.kt"
+grep -Fq 'runtime.transportReadiness' "$GATE"
+grep -Fq 'readiness.isReadyAt(nowMs)' "$GATE"
+grep -Fq 'CoreConnectivityAuthority.PROTECTED_TRANSPORT' "$GATE"
+grep -Fq 'CoreDecisionReason.PROTECTED_TRANSPORT_ONLY' "$GATE"
+grep -Fq 'MessageDigest.isEqual(authenticated.spkiSha256, candidate.spkiSha256)' "$GATE"
+grep -Fq 'forwardingActive = false' "$GATE"
+grep -Fq 'snapshot.transportReadiness?.isReadyAt(nowMs) == true' "$RUNTIME"
+grep -Fq 'class TransportSessionReadiness internal constructor' "$READINESS"
+grep -Fq 'validUntilMs' "$READINESS"
+grep -Fq 'transportReadiness = null' "$VPN_SERVICE"
+if grep -RInE 'forwardingActive[[:space:]]*=[[:space:]]*true' android-adapter/src/main/java; then
+  echo "Forwarding execution must remain disabled in v0.6" >&2
+  exit 37
+fi
+if grep -RInE 'tunnel(Output|Input).*write|tunnelInterface.*write|FileOutputStream.*tunnel' android-adapter/src/main/java; then
+  echo "Unexpected TUN forwarding implementation found in v0.6" >&2
+  exit 38
 fi
 
 echo "== Diff hygiene =="

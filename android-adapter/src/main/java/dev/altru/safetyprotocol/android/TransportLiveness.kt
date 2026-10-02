@@ -6,6 +6,7 @@ import java.security.SecureRandom
 data class TransportLivenessSnapshot(
     val fresh: Boolean,
     val lastAcknowledgedAtMs: Long?,
+    val freshUntilMs: Long?,
     val pendingSequence: Long?,
 )
 
@@ -80,12 +81,15 @@ class TransportLivenessTracker(
         if (pendingExpired) pending = null
 
         val acknowledgedAt = lastAcknowledgedAtMs
+        val freshUntilMs = acknowledgedAt?.let { Math.addExact(it, freshnessMs) }
         val withinFreshness = acknowledgedAt != null &&
+            freshUntilMs != null &&
             nowMs >= acknowledgedAt &&
-            nowMs - acknowledgedAt < freshnessMs
+            nowMs < freshUntilMs
         return TransportLivenessSnapshot(
             fresh = withinFreshness && !pendingExpired,
             lastAcknowledgedAtMs = acknowledgedAt,
+            freshUntilMs = freshUntilMs,
             pendingSequence = pending?.sequence,
         )
     }

@@ -11,6 +11,7 @@ data class VpnRuntimeSnapshot(
     val osVpnTransportObserved: Boolean = false,
     val alwaysOn: Boolean = false,
     val lockdownEnabled: Boolean = false,
+    val transportReadiness: TransportSessionReadiness? = null,
 )
 
 data class VpnEnforcementDecision(

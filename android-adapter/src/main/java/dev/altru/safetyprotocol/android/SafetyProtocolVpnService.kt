@@ -35,7 +35,7 @@ class SafetyProtocolVpnService : VpnService() {
         }
 
         override fun onLost(network: Network) {
-            SafetyProtocolVpnRuntime.update { it.copy(osVpnTransportObserved = false) }
+            SafetyProtocolVpnRuntime.update { it.copy(osVpnTransportObserved = false, transportReadiness = null) }
         }
     }
 
@@ -79,6 +79,7 @@ class SafetyProtocolVpnService : VpnService() {
                 serviceRunning = false,
                 captureEstablished = false,
                 osVpnTransportObserved = false,
+                transportReadiness = null,
             )
         }
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -111,7 +112,7 @@ class SafetyProtocolVpnService : VpnService() {
         }
 
         if (established == null) {
-            SafetyProtocolVpnRuntime.update { it.copy(captureEstablished = false) }
+            SafetyProtocolVpnRuntime.update { it.copy(captureEstablished = false, transportReadiness = null) }
             stopSelf()
             return
         }
@@ -143,7 +144,7 @@ class SafetyProtocolVpnService : VpnService() {
             } catch (_: IOException) {
                 // Closing the TUN descriptor is the normal shutdown path.
             } finally {
-                SafetyProtocolVpnRuntime.update { it.copy(captureEstablished = false) }
+                SafetyProtocolVpnRuntime.update { it.copy(captureEstablished = false, transportReadiness = null) }
             }
         }, DROP_THREAD_NAME).apply {
             isDaemon = true
@@ -162,6 +163,7 @@ class SafetyProtocolVpnService : VpnService() {
             it.copy(
                 captureEstablished = false,
                 osVpnTransportObserved = false,
+                transportReadiness = null,
             )
         }
     }
