@@ -401,12 +401,39 @@ if grep -RInE '(^|[^A-Za-z0-9_])BoundedAsyncPermitSink\(' "$MAIN_SRC" --exclude=
   echo "Production BoundedAsyncPermitSink call site found in v0.12" >&2
   exit 55
 fi
-UNEXPECTED_CANCELABLE_WRITERS="$(grep -RIl ': CancelableTransportWriter' "$MAIN_SRC" --include='*.kt' | grep -v '/BoundedAsyncPermitSink.kt$' || true)"
+UNEXPECTED_CANCELABLE_WRITERS="$(grep -RIl ': CancelableTransportWriter' "$MAIN_SRC" --include='*.kt' | grep -v '/BoundedAsyncPermitSink.kt$' | grep -v '/ProtectedSessionCancelableTransportWriter.kt$' || true)"
 if [[ -n "$UNEXPECTED_CANCELABLE_WRITERS" ]]; then
   printf '%s
 ' "$UNEXPECTED_CANCELABLE_WRITERS"
   echo "Production CancelableTransportWriter implementation found in v0.12" >&2
   exit 56
+fi
+
+echo "== Transport cancellation proof v0.13 boundary =="
+CANCEL_WRITER="android-adapter/src/main/java/dev/altru/safetyprotocol/android/ProtectedSessionCancelableTransportWriter.kt"
+grep -Fq 'class ProtectedSessionCancelableTransportWriter' "$CANCEL_WRITER"
+grep -Fq ': CancelableTransportWriter' "$CANCEL_WRITER"
+grep -Fq 'constructor(session: ProtectedTransportSession)' "$CANCEL_WRITER"
+grep -Fq 'abortTransport = session::close' "$CANCEL_WRITER"
+grep -Fq 'payload = frame.payload.copyOf()' "$CANCEL_WRITER"
+grep -Fq 'closedForWrites.compareAndSet(false, true)' "$CANCEL_WRITER"
+grep -Fq 'channel.write(snapshot)' "$CANCEL_WRITER"
+grep -Fq '"SafetyProtocol-v0.13-cancel"' "$ASYNC"
+grep -Fq 'val cancelFailure = AtomicReference<Throwable?>(null)' "$ASYNC"
+grep -Fq 'cancelFinished.await(graceNanos, TimeUnit.NANOSECONDS)' "$ASYNC"
+grep -Fq 'val graceDeadline = System.nanoTime() + graceNanos' "$ASYNC"
+grep -Fq '!cancelReturned || cancelFailure.get() != null || !writeStopped' "$ASYNC"
+if grep -RInE '(^|[^A-Za-z0-9_])ProtectedSessionCancelableTransportWriter\(' "$MAIN_SRC" --exclude='ProtectedSessionCancelableTransportWriter.kt'; then
+  echo "Production protected-session cancelable writer call site found in v0.13" >&2
+  exit 57
+fi
+if grep -RInE '(^|[^A-Za-z0-9_])BoundedAsyncPermitSink\(' "$MAIN_SRC" --exclude='BoundedAsyncPermitSink.kt'; then
+  echo "Production bounded async sink call site found in v0.13" >&2
+  exit 58
+fi
+if grep -RInE 'forwardingActive[[:space:]]*=[[:space:]]*true' "$MAIN_SRC"; then
+  echo "Real forwarding activation must remain disabled in v0.13" >&2
+  exit 59
 fi
 
 echo "== Diff hygiene =="
