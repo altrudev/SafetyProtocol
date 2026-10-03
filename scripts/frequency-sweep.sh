@@ -78,6 +78,8 @@ jar tf "$tmp/classes.jar" | grep -q 'PacketFlowPolicy.class'
 jar tf "$tmp/classes.jar" | grep -q 'DestinationPolicy.class'
 jar tf "$tmp/classes.jar" | grep -q 'DestinationRule.class'
 jar tf "$tmp/classes.jar" | grep -q 'ForwardingExecutor.class'
+jar tf "$tmp/classes.jar" | grep -q 'ForwardingExecutionSession.class'
+jar tf "$tmp/classes.jar" | grep -q 'ForwardingExecutionRevision.class'
     rm -rf "$tmp"
     trap - EXIT
 fi
@@ -274,7 +276,7 @@ echo "== Loopback executor v0.9 boundary =="
 EXECUTOR="android-adapter/src/main/java/dev/altru/safetyprotocol/android/ForwardingExecutor.kt"
 MAIN_SRC="android-adapter/src/main/java"
 grep -Fq 'payload = frame.payload.copyOf()' "$EXECUTOR"
-grep -Fq 'SafetyProtocolVpnRuntime.snapshot()' "$EXECUTOR"
+grep -Fq 'SafetyProtocolVpnRuntime.withStableSnapshot' "$EXECUTOR"
 grep -Fq 'ForwardingGate.evaluate(' "$EXECUTOR"
 grep -Fq 'System.nanoTime() / 1_000_000L' "$EXECUTOR"
 grep -Fq 'exactFrame.sequence <= last' "$EXECUTOR"
@@ -291,6 +293,35 @@ fi
 if grep -RInE 'forwardingActive[[:space:]]*=[[:space:]]*true' "$MAIN_SRC"; then
   echo "Real forwarding activation must remain disabled in v0.9" >&2
   exit 45
+fi
+
+echo "== Session execution revision v0.10 boundary =="
+SESSION="android-adapter/src/main/java/dev/altru/safetyprotocol/android/ForwardingExecutionSession.kt"
+RUNTIME="android-adapter/src/main/java/dev/altru/safetyprotocol/android/SafetyProtocolVpnRuntime.kt"
+grep -Fq 'data class ForwardingExecutionRevision' "$SESSION"
+grep -Fq 'Math.addExact(revision, 1L)' "$SESSION"
+grep -Fq 'spkiSha256.copyOf()' "$SESSION"
+grep -Fq 'withStableContext' "$SESSION"
+grep -Fq 'executionLeaseActive' "$SESSION"
+grep -Fq 'Execution context cannot mutate during an active execution lease' "$SESSION"
+grep -Fq 'currentRevision' "$RUNTIME"
+grep -Fq 'Math.addExact(currentRevision, 1L)' "$RUNTIME"
+grep -Fq 'withStableSnapshot' "$RUNTIME"
+grep -Fq 'executionLeaseActive' "$RUNTIME"
+grep -Fq 'VPN runtime cannot mutate during an active execution lease' "$RUNTIME"
+grep -Fq 'session.withStableContext' "$EXECUTOR"
+grep -Fq 'SafetyProtocolVpnRuntime.withStableSnapshot' "$EXECUTOR"
+grep -Fq 'sink.write(exactFrame, revision)' "$EXECUTOR"
+grep -Fq 'executionRevision = revision' "$EXECUTOR"
+grep -Fq 'contextRevision = context.revision' "$EXECUTOR"
+grep -Fq 'runtimeRevision = runtimeRevision' "$EXECUTOR"
+if grep -RIn ': ForwardingFrameSink' "$MAIN_SRC" --exclude='ForwardingExecutor.kt'; then
+  echo "Production forwarding sink implementation found in v0.10" >&2
+  exit 46
+fi
+if grep -RInE 'FramedTransportChannel.*ForwardingFrameSink|Socket.*ForwardingFrameSink|OutputStream.*ForwardingFrameSink' "$MAIN_SRC"; then
+  echo "Real network sink introduced before v0.10 claim ceiling" >&2
+  exit 47
 fi
 
 echo "== Diff hygiene =="

@@ -1,7 +1,10 @@
 package dev.altru.safetyprotocol.android
 
 internal fun interface ForwardingFrameSink {
-    fun write(frame: TransportFrame)
+    fun write(
+        frame: TransportFrame,
+        revision: ForwardingExecutionRevision,
+    )
 }
 
 internal fun interface ForwardingMonotonicClock {
@@ -27,9 +30,11 @@ internal data class ForwardingExecutionResult(
     val disposition: ForwardingExecutionDisposition,
     val reason: ForwardingExecutionReason,
     val gateReason: ForwardingGateReason? = null,
+    val executionRevision: ForwardingExecutionRevision? = null,
 )
 
 internal class ForwardingExecutor(
+    private val session: ForwardingExecutionSession,
     private val sink: ForwardingFrameSink,
     private val clock: ForwardingMonotonicClock = ForwardingMonotonicClock {
         System.nanoTime() / 1_000_000L
@@ -39,13 +44,7 @@ internal class ForwardingExecutor(
     private var poisoned = false
 
     @Synchronized
-    fun execute(
-        frame: TransportFrame,
-        policy: CoreConnectivityDecision,
-        authenticatedEndpoint: ProtectedTransportEndpoint,
-        candidateEndpoint: ProtectedTransportEndpoint,
-        destinationPolicy: DestinationPolicy,
-    ): ForwardingExecutionResult {
+    fun execute(frame: TransportFrame): ForwardingExecutionResult {
         if (poisoned) {
             return failed(ForwardingExecutionReason.EXECUTOR_POISONED)
         }
@@ -56,18 +55,44 @@ internal class ForwardingExecutor(
             payload = frame.payload.copyOf(),
         )
 
+        return session.withStableContext { context ->
+            SafetyProtocolVpnRuntime.withStableSnapshot { runtime, runtimeRevision ->
+                executeStable(
+                    exactFrame = exactFrame,
+                    context = context,
+                    runtime = runtime,
+                    runtimeRevision = runtimeRevision,
+                )
+            }
+        }
+    }
+
+    private fun executeStable(
+        exactFrame: TransportFrame,
+        context: ForwardingExecutionContext,
+        runtime: VpnRuntimeSnapshot,
+        runtimeRevision: Long,
+    ): ForwardingExecutionResult {
+        val revision = ForwardingExecutionRevision(
+            contextRevision = context.revision,
+            runtimeRevision = runtimeRevision,
+        )
+
         val gate = try {
             ForwardingGate.evaluate(
-                runtime = SafetyProtocolVpnRuntime.snapshot(),
-                policy = policy,
-                authenticatedEndpoint = authenticatedEndpoint,
-                candidateEndpoint = candidateEndpoint,
-                destinationPolicy = destinationPolicy,
+                runtime = runtime,
+                policy = context.policy,
+                authenticatedEndpoint = context.authenticatedEndpoint,
+                candidateEndpoint = context.candidateEndpoint,
+                destinationPolicy = context.destinationPolicy,
                 frame = exactFrame,
                 nowMs = clock.nowMs(),
             )
         } catch (_: Throwable) {
-            return failed(ForwardingExecutionReason.EVALUATION_FAILED)
+            return failed(
+                reason = ForwardingExecutionReason.EVALUATION_FAILED,
+                revision = revision,
+            )
         }
 
         if (!gate.eligible) {
@@ -75,6 +100,7 @@ internal class ForwardingExecutor(
                 disposition = ForwardingExecutionDisposition.DROPPED,
                 reason = ForwardingExecutionReason.GATE_NOT_ELIGIBLE,
                 gateReason = gate.reason,
+                executionRevision = revision,
             )
         }
 
@@ -84,14 +110,19 @@ internal class ForwardingExecutor(
                 disposition = ForwardingExecutionDisposition.DROPPED,
                 reason = ForwardingExecutionReason.REPLAY_OR_OUT_OF_ORDER,
                 gateReason = gate.reason,
+                executionRevision = revision,
             )
         }
 
         try {
-            sink.write(exactFrame)
+            sink.write(exactFrame, revision)
         } catch (_: Throwable) {
             poisoned = true
-            return failed(ForwardingExecutionReason.WRITE_FAILED, gate.reason)
+            return failed(
+                reason = ForwardingExecutionReason.WRITE_FAILED,
+                gateReason = gate.reason,
+                revision = revision,
+            )
         }
 
         lastExecutedSequence = exactFrame.sequence
@@ -99,15 +130,18 @@ internal class ForwardingExecutor(
             disposition = ForwardingExecutionDisposition.EXECUTED,
             reason = ForwardingExecutionReason.EXECUTED,
             gateReason = gate.reason,
+            executionRevision = revision,
         )
     }
 
     private fun failed(
         reason: ForwardingExecutionReason,
         gateReason: ForwardingGateReason? = null,
+        revision: ForwardingExecutionRevision? = null,
     ) = ForwardingExecutionResult(
         disposition = ForwardingExecutionDisposition.FAILED_CLOSED,
         reason = reason,
         gateReason = gateReason,
+        executionRevision = revision,
     )
 }
