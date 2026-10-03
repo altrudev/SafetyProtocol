@@ -107,6 +107,76 @@ class BoundedAsyncPermitSinkTest {
         assertEquals(ForwardingExecutionReason.WRITE_FAILED, result.reason)
     }
 
+
+    @Test
+    fun blockingCancellationCallbackCannotHoldPolicyThread() {
+        installRuntime()
+        val releaseCancel = CountDownLatch(1)
+        val writer = object : CancelableTransportWriter {
+            override fun prepare(frame: TransportFrame, permit: ForwardingExecutionPermit) =
+                object : CancelableTransportWrite {
+                    override fun run() {
+                        try {
+                            CountDownLatch(1).await()
+                        } catch (_: InterruptedException) {
+                            while (releaseCancel.count > 0) {
+                                try {
+                                    releaseCancel.await(5, TimeUnit.MILLISECONDS)
+                                } catch (_: InterruptedException) {
+                                }
+                            }
+                        }
+                    }
+
+                    override fun cancel() {
+                        releaseCancel.await()
+                    }
+                }
+        }
+        val sink = BoundedAsyncPermitSink(writer, cancellationGraceMs = 35)
+        val executor = executor(sink)
+        val permit = executor.issuePermit(frame(), ttlMs = 200, writeBudgetMs = 25)!!
+
+        val startedAt = System.nanoTime()
+        val result = executor.consume(permit)
+        val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt)
+
+        assertEquals(ForwardingExecutionDisposition.FAILED_CLOSED, result.disposition)
+        assertEquals(ForwardingExecutionReason.WRITE_CANCELLATION_UNCONFIRMED, result.reason)
+        assertTrue(elapsedMs < 500)
+        releaseCancel.countDown()
+    }
+
+
+    @Test
+    fun cancellationFailureIsNeverReportedAsConfirmed() {
+        installRuntime()
+        val writer = object : CancelableTransportWriter {
+            override fun prepare(frame: TransportFrame, permit: ForwardingExecutionPermit) =
+                object : CancelableTransportWrite {
+                    override fun run() {
+                        try {
+                            CountDownLatch(1).await()
+                        } catch (_: InterruptedException) {
+                            // Worker stops, but cancellation itself did not succeed.
+                        }
+                    }
+
+                    override fun cancel() {
+                        throw IllegalStateException("abort failed")
+                    }
+                }
+        }
+        val sink = BoundedAsyncPermitSink(writer, cancellationGraceMs = 50)
+        val executor = executor(sink)
+        val permit = executor.issuePermit(frame(), ttlMs = 200, writeBudgetMs = 25)!!
+
+        val result = executor.consume(permit)
+
+        assertEquals(ForwardingExecutionDisposition.FAILED_CLOSED, result.disposition)
+        assertEquals(ForwardingExecutionReason.WRITE_CANCELLATION_UNCONFIRMED, result.reason)
+    }
+
     private fun executor(sink: ForwardingPermitSink): PermitForwardingExecutor =
         PermitForwardingExecutor(
             session = ForwardingExecutionSession(policy, endpoint, endpoint, destinations),

@@ -94,3 +94,8 @@ SafetyProtocol now has executor-bound, single-use forwarding permits with hard T
 ## Durable receipts and bounded async handoff v0.12
 
 SafetyProtocol now requires a receipt store for permit execution, includes a bounded SHA-256 hash-chained local receipt journal with a committed-count/last-hash anchor, and has a test-only asynchronous handoff adapter with bounded cancellation grace. Receipt persistence failure poisons future execution without rewriting the actual action outcome. No production async writer or real forwarding path is connected. See docs/DURABLE-RECEIPTS-ASYNC-v0.12.md.
+
+
+## Transport cancellation proof v0.13
+
+SafetyProtocol now has an allowlisted cancelable framed writer bound to ProtectedTransportSession.close(), plus bounded asynchronous cancellation that requires both successful cancellation return and write-worker quiescence inside one grace deadline. Confirmed cancellation proves no later application-level framed emission by that writer; it does not claim that already-buffered TLS/kernel bytes cannot drain onto the wire. No production forwarding path is connected. See docs/TRANSPORT-CANCELLATION-v0.13.md.

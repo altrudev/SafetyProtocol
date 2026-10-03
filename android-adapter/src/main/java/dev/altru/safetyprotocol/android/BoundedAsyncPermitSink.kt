@@ -62,14 +62,37 @@ internal class BoundedAsyncPermitSink(
         }
 
         if (!finished.await(permit.writeBudgetMs, TimeUnit.MILLISECONDS)) {
-            try {
-                operation.cancel()
-            } catch (_: Throwable) {
-                // A failed cancellation request is represented by the bounded unconfirmed outcome.
+            val cancelFinished = CountDownLatch(1)
+            val cancelFailure = AtomicReference<Throwable?>(null)
+            Thread(
+                {
+                    try {
+                        operation.cancel()
+                    } catch (t: Throwable) {
+                        cancelFailure.set(t)
+                    } finally {
+                        cancelFinished.countDown()
+                    }
+                },
+                "SafetyProtocol-v0.13-cancel",
+            ).apply {
+                isDaemon = true
+                start()
             }
+
             worker.interrupt()
 
-            if (!finished.await(cancellationGraceMs, TimeUnit.MILLISECONDS)) {
+            val graceNanos = TimeUnit.MILLISECONDS.toNanos(cancellationGraceMs)
+            val graceDeadline = System.nanoTime() + graceNanos
+            val cancelReturned = cancelFinished.await(graceNanos, TimeUnit.NANOSECONDS)
+            val remaining = (graceDeadline - System.nanoTime()).coerceAtLeast(0L)
+            val writeStopped = if (remaining > 0L) {
+                finished.await(remaining, TimeUnit.NANOSECONDS)
+            } else {
+                finished.count == 0L
+            }
+
+            if (!cancelReturned || cancelFailure.get() != null || !writeStopped) {
                 throw AsyncWriteCancellationUnconfirmedException()
             }
             throw AsyncWriteDeadlineExceededException()
