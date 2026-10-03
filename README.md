@@ -74,3 +74,8 @@ SafetyProtocol now parses bounded IPv4/IPv6 packet metadata before a DATA frame 
 ## Explicit destination policy v0.8
 
 SafetyProtocol now requires an explicit IPv4/IPv6 CIDR allow decision after packet parsing and before forwarding eligibility. No matching allow rule means deny; longest-prefix matching applies and deny wins ties. Exact destination bytes remain transient in memory and are not persisted. Forwarding execution remains disabled. See docs/DESTINATION-POLICY-v0.8.md.
+
+
+## Loopback forwarding executor v0.9
+
+SafetyProtocol now has an internal, unconnected execution-gating primitive that snapshots the exact DATA frame, invokes the existing ForwardingGate at execution time, rejects replay/out-of-order sequences, and permanently fails closed after an unknown writer failure. No production sink or VPN call site exists yet, so real forwarding remains disabled. See docs/LOOPBACK-EXECUTOR-v0.9.md.
