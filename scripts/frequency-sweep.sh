@@ -82,6 +82,8 @@ jar tf "$tmp/classes.jar" | grep -q 'ForwardingExecutionSession.class'
 jar tf "$tmp/classes.jar" | grep -q 'ForwardingExecutionPermit.class'
 jar tf "$tmp/classes.jar" | grep -q 'ForwardingExecutionReceipt.class'
 jar tf "$tmp/classes.jar" | grep -q 'PermitForwardingExecutor.class'
+jar tf "$tmp/classes.jar" | grep -q 'HashChainedReceiptJournal.class'
+jar tf "$tmp/classes.jar" | grep -q 'BoundedAsyncPermitSink.class'
 jar tf "$tmp/classes.jar" | grep -q 'ForwardingExecutionRevision.class'
     rm -rf "$tmp"
     trap - EXIT
@@ -338,6 +340,9 @@ grep -Fq 'nowMs >= expiresAtMs' "$PERMIT"
 grep -Fq 'currentRevision != permit.revision' "$PERMIT"
 grep -Fq 'ForwardingGate.evaluate(' "$PERMIT"
 grep -Fq 'poisoned = true' "$PERMIT"
+grep -Fq 'private val receiptStore: ForwardingReceiptStore' "$PERMIT"
+grep -Fq 'receiptStore.append(receipt)' "$PERMIT"
+grep -Fq 'ForwardingReceiptPersistence.FAILED' "$PERMIT"
 grep -Fq 'ForwardingExecutionReceipt(' "$PERMIT"
 RECEIPT_FIELDS="$(awk '/data class ForwardingExecutionReceipt/{capture=1} capture{print} capture && /^\)/{exit}' "$PERMIT")"
 if printf '%s
@@ -345,8 +350,11 @@ if printf '%s
   echo "Sensitive field found in v0.11 execution receipt" >&2
   exit 48
 fi
-if grep -RIn ': ForwardingPermitSink' "$MAIN_SRC" --exclude='ForwardingExecutionPermit.kt'; then
-  echo "Production ForwardingPermitSink implementation found in v0.11" >&2
+UNEXPECTED_PERMIT_SINKS="$(grep -RIl ': ForwardingPermitSink' "$MAIN_SRC" --include='*.kt' | grep -v '/ForwardingExecutionPermit.kt$' | grep -v '/BoundedAsyncPermitSink.kt$' || true)"
+if [[ -n "$UNEXPECTED_PERMIT_SINKS" ]]; then
+  printf '%s
+' "$UNEXPECTED_PERMIT_SINKS"
+  echo "Unexpected production ForwardingPermitSink implementation found" >&2
   exit 49
 fi
 if grep -RInE '(^|[^A-Za-z0-9_])PermitForwardingExecutor\(' "$MAIN_SRC" --exclude='ForwardingExecutionPermit.kt'; then
@@ -360,6 +368,45 @@ fi
 if grep -RInE 'forwardingActive[[:space:]]*=[[:space:]]*true' "$MAIN_SRC"; then
   echo "Real forwarding activation must remain disabled in v0.11" >&2
   exit 52
+fi
+
+echo "== Durable receipts + bounded async handoff v0.12 boundary =="
+ASYNC="android-adapter/src/main/java/dev/altru/safetyprotocol/android/BoundedAsyncPermitSink.kt"
+JOURNAL="android-adapter/src/main/java/dev/altru/safetyprotocol/android/DurableReceiptJournal.kt"
+grep -Fq 'class BoundedAsyncPermitSink' "$ASYNC"
+grep -Fq ': ForwardingPermitSink' "$ASYNC"
+grep -Fq 'MAX_CANCELLATION_GRACE_MS = 100L' "$ASYNC"
+grep -Fq 'isDaemon = true' "$ASYNC"
+grep -Fq 'operation.cancel()' "$ASYNC"
+grep -Fq 'worker.interrupt()' "$ASYNC"
+grep -Fq 'AsyncWriteCancellationUnconfirmedException' "$ASYNC"
+if grep -Eqi 'java\.net\.|Socket|OutputStream|FramedTransportChannel|Datagram|URLConnection|Http' "$ASYNC"; then
+  echo "Real network primitive found in bounded async test handoff" >&2
+  exit 53
+fi
+grep -Fq 'MessageDigest.getInstance("SHA-256")' "$JOURNAL"
+grep -Fq 'raf.fd.sync()' "$JOURNAL"
+grep -Fq 'Refusing append to invalid receipt journal' "$JOURNAL"
+grep -Fq 'MAX_RECORDS = 4_096L' "$JOURNAL"
+grep -Fq 'MAX_JOURNAL_BYTES = 1_048_576L' "$JOURNAL"
+grep -Fq 'writeAnchor(Math.addExact(verification.recordCount, 1L), hash)' "$JOURNAL"
+grep -Fq 'receipt anchor count mismatch' "$JOURNAL"
+grep -Fq 'ANCHOR_MAGIC' "$JOURNAL"
+grep -Fq 'anchorFile' "$JOURNAL"
+if grep -Eqi 'receipt\.(destination|payload|relayHost|spki|ssid|bssid|credential|location)' "$JOURNAL"; then
+  echo "Sensitive execution data found in durable receipt journal format" >&2
+  exit 54
+fi
+if grep -RInE '(^|[^A-Za-z0-9_])BoundedAsyncPermitSink\(' "$MAIN_SRC" --exclude='BoundedAsyncPermitSink.kt'; then
+  echo "Production BoundedAsyncPermitSink call site found in v0.12" >&2
+  exit 55
+fi
+UNEXPECTED_CANCELABLE_WRITERS="$(grep -RIl ': CancelableTransportWriter' "$MAIN_SRC" --include='*.kt' | grep -v '/BoundedAsyncPermitSink.kt$' || true)"
+if [[ -n "$UNEXPECTED_CANCELABLE_WRITERS" ]]; then
+  printf '%s
+' "$UNEXPECTED_CANCELABLE_WRITERS"
+  echo "Production CancelableTransportWriter implementation found in v0.12" >&2
+  exit 56
 fi
 
 echo "== Diff hygiene =="

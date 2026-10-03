@@ -99,7 +99,7 @@ class ForwardingExecutionPermitTest {
         installRuntime()
         val sink = RecordingPermitSink()
         val session = ForwardingExecutionSession(policy, endpoint, endpoint, destinations)
-        val executor = PermitForwardingExecutor(session, sink, MutableClock(500))
+        val executor = PermitForwardingExecutor(session, sink, RecordingReceiptStore(), MutableClock(500))
 
         val permit = executor.issuePermit(frame(), ttlMs = 100, writeBudgetMs = 10)!!
         session.updateDestinationPolicy(DestinationPolicy(emptyList()))
@@ -271,12 +271,53 @@ class ForwardingExecutionPermitTest {
         assertTrue(sink.frames.isEmpty())
     }
 
+
+    @Test
+    fun receiptPersistenceFailureDoesNotRewriteExecutedOutcomeButPoisonsFutureWork() {
+        installRuntime()
+        val clock = MutableClock(500)
+        val sink = RecordingPermitSink()
+        val session = ForwardingExecutionSession(policy, endpoint, endpoint, destinations)
+        val executor = PermitForwardingExecutor(
+            session = session,
+            sink = sink,
+            receiptStore = ForwardingReceiptStore { throw IllegalStateException("disk failure") },
+            clock = clock,
+        )
+
+        val permit = executor.issuePermit(frame(), ttlMs = 100, writeBudgetMs = 10)!!
+        val result = executor.consume(permit)
+
+        assertEquals(ForwardingExecutionDisposition.EXECUTED, result.disposition)
+        assertEquals(ForwardingExecutionReason.EXECUTED, result.reason)
+        assertEquals(ForwardingReceiptPersistence.FAILED, result.receiptPersistence)
+        assertEquals(1, sink.frames.size)
+        assertNull(executor.issuePermit(frame(11), ttlMs = 100, writeBudgetMs = 10))
+    }
+
+    @Test
+    fun successfulReceiptStoreIsReportedAsPersisted() {
+        installRuntime()
+        val clock = MutableClock(500)
+        val sink = RecordingPermitSink()
+        val store = RecordingReceiptStore()
+        val session = ForwardingExecutionSession(policy, endpoint, endpoint, destinations)
+        val executor = PermitForwardingExecutor(session, sink, store, clock)
+
+        val permit = executor.issuePermit(frame(), ttlMs = 100, writeBudgetMs = 10)!!
+        val result = executor.consume(permit)
+
+        assertEquals(ForwardingReceiptPersistence.PERSISTED, result.receiptPersistence)
+        assertEquals(1, store.receipts.size)
+        assertEquals(result.receipt, store.receipts.single())
+    }
+
     private fun executor(
         sink: ForwardingPermitSink,
         clock: MutableClock,
     ): PermitForwardingExecutor {
         val session = ForwardingExecutionSession(policy, endpoint, endpoint, destinations)
-        return PermitForwardingExecutor(session, sink, clock)
+        return PermitForwardingExecutor(session, sink, RecordingReceiptStore(), clock)
     }
 
     private fun installRuntime() {
@@ -298,6 +339,14 @@ class ForwardingExecutionPermitTest {
 
     private fun frame(sequence: Long = 10): TransportFrame =
         TransportFrame(TransportFrameType.DATA, sequence, publicIpv4TcpPacket())
+
+
+    private class RecordingReceiptStore : ForwardingReceiptStore {
+        val receipts = mutableListOf<ForwardingExecutionReceipt>()
+        override fun append(receipt: ForwardingExecutionReceipt) {
+            receipts += receipt
+        }
+    }
 
     private class MutableClock(var now: Long) : ForwardingMonotonicClock {
         override fun nowMs(): Long = now
