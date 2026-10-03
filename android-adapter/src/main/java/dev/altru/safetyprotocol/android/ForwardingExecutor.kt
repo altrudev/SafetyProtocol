@@ -24,6 +24,13 @@ internal enum class ForwardingExecutionReason {
     EVALUATION_FAILED,
     WRITE_FAILED,
     EXECUTOR_POISONED,
+    PERMIT_CANCELLED,
+    PERMIT_EXPIRED,
+    PERMIT_ALREADY_CONSUMED,
+    PERMIT_REVISION_MISMATCH,
+    PERMIT_WRONG_OWNER,
+    WRITE_DEADLINE_EXCEEDED,
+    CLOCK_REGRESSION,
 }
 
 internal data class ForwardingExecutionResult(
@@ -31,6 +38,7 @@ internal data class ForwardingExecutionResult(
     val reason: ForwardingExecutionReason,
     val gateReason: ForwardingGateReason? = null,
     val executionRevision: ForwardingExecutionRevision? = null,
+    val receipt: ForwardingExecutionReceipt? = null,
 )
 
 internal class ForwardingExecutor(

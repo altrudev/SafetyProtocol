@@ -84,3 +84,8 @@ SafetyProtocol now has an internal, unconnected execution-gating primitive that 
 ## Session execution revision v0.10
 
 SafetyProtocol now binds each test-sink execution attempt to a composite session/runtime revision. Policy, relay, destination policy, and live VPN runtime updates cannot commit between gate evaluation and the test sink write; same-thread reentrant mutation is explicitly rejected. Revision evidence is carried on both executed and denied attempts. Real forwarding remains disabled. See docs/EXECUTION-REVISION-v0.10.md.
+
+
+## Bounded execution permits v0.11
+
+SafetyProtocol now has executor-bound, single-use forwarding permits with hard TTL/write-budget ceilings, cancellation, composite-revision matching, consumption-time gate revalidation, and privacy-minimized in-memory receipts. A sink failure or missed cooperative write deadline poisons the executor. No production network sink or TUN forwarding path is enabled. See docs/EXECUTION-PERMIT-v0.11.md.

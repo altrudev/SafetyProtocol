@@ -79,6 +79,9 @@ jar tf "$tmp/classes.jar" | grep -q 'DestinationPolicy.class'
 jar tf "$tmp/classes.jar" | grep -q 'DestinationRule.class'
 jar tf "$tmp/classes.jar" | grep -q 'ForwardingExecutor.class'
 jar tf "$tmp/classes.jar" | grep -q 'ForwardingExecutionSession.class'
+jar tf "$tmp/classes.jar" | grep -q 'ForwardingExecutionPermit.class'
+jar tf "$tmp/classes.jar" | grep -q 'ForwardingExecutionReceipt.class'
+jar tf "$tmp/classes.jar" | grep -q 'PermitForwardingExecutor.class'
 jar tf "$tmp/classes.jar" | grep -q 'ForwardingExecutionRevision.class'
     rm -rf "$tmp"
     trap - EXIT
@@ -282,7 +285,7 @@ grep -Fq 'System.nanoTime() / 1_000_000L' "$EXECUTOR"
 grep -Fq 'exactFrame.sequence <= last' "$EXECUTOR"
 grep -Fq 'poisoned = true' "$EXECUTOR"
 grep -Fq 'ForwardingExecutionReason.EXECUTOR_POISONED' "$EXECUTOR"
-if grep -RIn 'ForwardingExecutor(' "$MAIN_SRC" --exclude='ForwardingExecutor.kt'; then
+if grep -RInE '(^|[^A-Za-z0-9_])ForwardingExecutor\(' "$MAIN_SRC" --exclude='ForwardingExecutor.kt'; then
   echo "Production ForwardingExecutor call site found before v0.9 promotion boundary" >&2
   exit 43
 fi
@@ -322,6 +325,41 @@ fi
 if grep -RInE 'FramedTransportChannel.*ForwardingFrameSink|Socket.*ForwardingFrameSink|OutputStream.*ForwardingFrameSink' "$MAIN_SRC"; then
   echo "Real network sink introduced before v0.10 claim ceiling" >&2
   exit 47
+fi
+
+echo "== Bounded execution permit v0.11 boundary =="
+PERMIT="android-adapter/src/main/java/dev/altru/safetyprotocol/android/ForwardingExecutionPermit.kt"
+grep -Fq 'MAX_PERMIT_TTL_MS = 1_000L' "$PERMIT"
+grep -Fq 'MAX_WRITE_BUDGET_MS = 250L' "$PERMIT"
+grep -Fq 'require(writeBudgetMs <= ttlMs)' "$PERMIT"
+grep -Fq 'payload = frame.payload.copyOf()' "$PERMIT"
+grep -Fq 'callerToken !== ownerToken' "$PERMIT"
+grep -Fq 'nowMs >= expiresAtMs' "$PERMIT"
+grep -Fq 'currentRevision != permit.revision' "$PERMIT"
+grep -Fq 'ForwardingGate.evaluate(' "$PERMIT"
+grep -Fq 'poisoned = true' "$PERMIT"
+grep -Fq 'ForwardingExecutionReceipt(' "$PERMIT"
+RECEIPT_FIELDS="$(awk '/data class ForwardingExecutionReceipt/{capture=1} capture{print} capture && /^\)/{exit}' "$PERMIT")"
+if printf '%s
+' "$RECEIPT_FIELDS" | grep -Eqi 'destination|payload|relayHost|spki|ssid|bssid|credential|location'; then
+  echo "Sensitive field found in v0.11 execution receipt" >&2
+  exit 48
+fi
+if grep -RIn ': ForwardingPermitSink' "$MAIN_SRC" --exclude='ForwardingExecutionPermit.kt'; then
+  echo "Production ForwardingPermitSink implementation found in v0.11" >&2
+  exit 49
+fi
+if grep -RInE '(^|[^A-Za-z0-9_])PermitForwardingExecutor\(' "$MAIN_SRC" --exclude='ForwardingExecutionPermit.kt'; then
+  echo "Production PermitForwardingExecutor call site found in v0.11" >&2
+  exit 50
+fi
+if grep -Eqi 'FramedTransportChannel|java\.net\.Socket|OutputStream|SharedPreferences|SQLite|RoomDatabase|FileOutputStream' "$PERMIT"; then
+  echo "Network or persistence surface introduced into v0.11 permit boundary" >&2
+  exit 51
+fi
+if grep -RInE 'forwardingActive[[:space:]]*=[[:space:]]*true' "$MAIN_SRC"; then
+  echo "Real forwarding activation must remain disabled in v0.11" >&2
+  exit 52
 fi
 
 echo "== Diff hygiene =="
