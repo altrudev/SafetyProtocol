@@ -31,6 +31,7 @@ internal enum class ForwardingExecutionReason {
     PERMIT_WRONG_OWNER,
     WRITE_DEADLINE_EXCEEDED,
     CLOCK_REGRESSION,
+    WRITE_CANCELLATION_UNCONFIRMED,
 }
 
 internal data class ForwardingExecutionResult(
@@ -39,6 +40,7 @@ internal data class ForwardingExecutionResult(
     val gateReason: ForwardingGateReason? = null,
     val executionRevision: ForwardingExecutionRevision? = null,
     val receipt: ForwardingExecutionReceipt? = null,
+    val receiptPersistence: ForwardingReceiptPersistence = ForwardingReceiptPersistence.NOT_ATTEMPTED,
 )
 
 internal class ForwardingExecutor(

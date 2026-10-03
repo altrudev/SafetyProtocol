@@ -6,6 +6,16 @@ internal enum class ForwardingReceiptDisposition {
     FAILED_CLOSED,
 }
 
+internal enum class ForwardingReceiptPersistence {
+    NOT_ATTEMPTED,
+    PERSISTED,
+    FAILED,
+}
+
+internal fun interface ForwardingReceiptStore {
+    fun append(receipt: ForwardingExecutionReceipt)
+}
+
 internal data class ForwardingExecutionReceipt(
     val permitId: Long,
     val revision: ForwardingExecutionRevision,
@@ -110,6 +120,7 @@ internal class ForwardingExecutionPermit internal constructor(
 internal class PermitForwardingExecutor(
     val session: ForwardingExecutionSession,
     private val sink: ForwardingPermitSink,
+    private val receiptStore: ForwardingReceiptStore,
     private val clock: ForwardingMonotonicClock = ForwardingMonotonicClock {
         System.nanoTime() / 1_000_000L
     },
@@ -314,6 +325,24 @@ internal class PermitForwardingExecutor(
 
                 try {
                     sink.write(exactFrame, permit)
+                } catch (_: AsyncWriteCancellationUnconfirmedException) {
+                    poisoned = true
+                    return@withStableSnapshot terminal(
+                        permit,
+                        ForwardingExecutionDisposition.FAILED_CLOSED,
+                        ForwardingExecutionReason.WRITE_CANCELLATION_UNCONFIRMED,
+                        safeNow(now),
+                        gate.reason,
+                    )
+                } catch (_: AsyncWriteDeadlineExceededException) {
+                    poisoned = true
+                    return@withStableSnapshot terminal(
+                        permit,
+                        ForwardingExecutionDisposition.FAILED_CLOSED,
+                        ForwardingExecutionReason.WRITE_DEADLINE_EXCEEDED,
+                        safeNow(now),
+                        gate.reason,
+                    )
                 } catch (_: Throwable) {
                     poisoned = true
                     return@withStableSnapshot terminal(
@@ -378,21 +407,30 @@ internal class PermitForwardingExecutor(
             ForwardingExecutionDisposition.DROPPED -> ForwardingReceiptDisposition.DROPPED
             ForwardingExecutionDisposition.FAILED_CLOSED -> ForwardingReceiptDisposition.FAILED_CLOSED
         }
+        val receipt = ForwardingExecutionReceipt(
+            permitId = permit.permitId,
+            revision = permit.revision,
+            frameSequence = permit.frameSequence,
+            frameLength = permit.frameLength,
+            disposition = receiptDisposition,
+            reason = reason,
+            issuedAtMs = permit.issuedAtMs,
+            terminalAtMs = terminalAtMs,
+        )
+        val persistence = try {
+            receiptStore.append(receipt)
+            ForwardingReceiptPersistence.PERSISTED
+        } catch (_: Throwable) {
+            poisoned = true
+            ForwardingReceiptPersistence.FAILED
+        }
         return ForwardingExecutionResult(
             disposition = disposition,
             reason = reason,
             gateReason = gateReason,
             executionRevision = permit.revision,
-            receipt = ForwardingExecutionReceipt(
-                permitId = permit.permitId,
-                revision = permit.revision,
-                frameSequence = permit.frameSequence,
-                frameLength = permit.frameLength,
-                disposition = receiptDisposition,
-                reason = reason,
-                issuedAtMs = permit.issuedAtMs,
-                terminalAtMs = terminalAtMs,
-            ),
+            receipt = receipt,
+            receiptPersistence = persistence,
         )
     }
 }
