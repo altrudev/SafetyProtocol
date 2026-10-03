@@ -79,3 +79,8 @@ SafetyProtocol now requires an explicit IPv4/IPv6 CIDR allow decision after pack
 ## Loopback forwarding executor v0.9
 
 SafetyProtocol now has an internal, unconnected execution-gating primitive that snapshots the exact DATA frame, invokes the existing ForwardingGate at execution time, rejects replay/out-of-order sequences, and permanently fails closed after an unknown writer failure. No production sink or VPN call site exists yet, so real forwarding remains disabled. See docs/LOOPBACK-EXECUTOR-v0.9.md.
+
+
+## Session execution revision v0.10
+
+SafetyProtocol now binds each test-sink execution attempt to a composite session/runtime revision. Policy, relay, destination policy, and live VPN runtime updates cannot commit between gate evaluation and the test sink write; same-thread reentrant mutation is explicitly rejected. Revision evidence is carried on both executed and denied attempts. Real forwarding remains disabled. See docs/EXECUTION-REVISION-v0.10.md.

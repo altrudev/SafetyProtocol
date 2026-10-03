@@ -57,13 +57,12 @@ class ForwardingExecutorTest {
         val executor = executor(sink)
         val denied = policy.copy(authority = CoreConnectivityAuthority.DENIED)
 
-        val result = executor.execute(
-            frame(),
-            denied,
-            endpoint,
-            endpoint,
-            destinationPolicy,
-        )
+        val deniedSession = session(policyOverride = denied)
+        val result = ForwardingExecutor(
+            deniedSession,
+            sink,
+            ForwardingMonotonicClock { 500 },
+        ).execute(frame())
 
         assertEquals(ForwardingExecutionDisposition.DROPPED, result.disposition)
         assertEquals(ForwardingGateReason.POLICY_NOT_AUTHORIZED, result.gateReason)
@@ -105,13 +104,12 @@ class ForwardingExecutorTest {
             sha256Hex = "11".repeat(32),
         )
 
-        val result = executor(sink).execute(
-            frame(),
-            policy,
-            endpoint,
-            drifted,
-            destinationPolicy,
-        )
+        val driftedSession = session(candidateEndpointOverride = drifted)
+        val result = ForwardingExecutor(
+            driftedSession,
+            sink,
+            ForwardingMonotonicClock { 500 },
+        ).execute(frame())
 
         assertEquals(ForwardingExecutionDisposition.DROPPED, result.disposition)
         assertEquals(ForwardingGateReason.ENDPOINT_BINDING_MISMATCH, result.gateReason)
@@ -123,13 +121,12 @@ class ForwardingExecutorTest {
         installRuntime()
         val sink = RecordingSink()
 
-        val result = executor(sink).execute(
-            frame(),
-            policy,
-            endpoint,
-            endpoint,
-            DestinationPolicy(emptyList()),
-        )
+        val deniedSession = session(destinationPolicyOverride = DestinationPolicy(emptyList()))
+        val result = ForwardingExecutor(
+            deniedSession,
+            sink,
+            ForwardingMonotonicClock { 500 },
+        ).execute(frame())
 
         assertEquals(ForwardingExecutionDisposition.DROPPED, result.disposition)
         assertEquals(ForwardingGateReason.DESTINATION_POLICY_NOT_AUTHORIZED, result.gateReason)
@@ -199,6 +196,7 @@ class ForwardingExecutorTest {
         installRuntime()
         val sink = RecordingSink()
         val executor = ForwardingExecutor(
+            session = session(),
             sink = sink,
             clock = ForwardingMonotonicClock { throw IllegalStateException("clock unavailable") },
         )
@@ -222,7 +220,7 @@ class ForwardingExecutorTest {
                 return 500
             }
         }
-        val executor = ForwardingExecutor(sink, clock)
+        val executor = ForwardingExecutor(session(), sink, clock)
 
         val result = execute(executor, source)
 
@@ -247,21 +245,30 @@ class ForwardingExecutorTest {
         }
     }
 
+    private fun session(
+        policyOverride: CoreConnectivityDecision = policy,
+        candidateEndpointOverride: ProtectedTransportEndpoint = endpoint,
+        destinationPolicyOverride: DestinationPolicy = destinationPolicy,
+    ) = ForwardingExecutionSession(
+        policy = policyOverride,
+        authenticatedEndpoint = endpoint,
+        candidateEndpoint = candidateEndpointOverride,
+        destinationPolicy = destinationPolicyOverride,
+    )
+
     private fun executor(
         sink: ForwardingFrameSink,
         nowMs: Long = 500,
-    ) = ForwardingExecutor(sink, ForwardingMonotonicClock { nowMs })
+    ) = ForwardingExecutor(
+        session = session(),
+        sink = sink,
+        clock = ForwardingMonotonicClock { nowMs },
+    )
 
     private fun execute(
         executor: ForwardingExecutor,
         frame: TransportFrame,
-    ) = executor.execute(
-        frame = frame,
-        policy = policy,
-        authenticatedEndpoint = endpoint,
-        candidateEndpoint = endpoint,
-        destinationPolicy = destinationPolicy,
-    )
+    ) = executor.execute(frame)
 
     private fun frame(sequence: Long = 10, destinationPort: Int = 443): TransportFrame =
         TransportFrame(
@@ -272,14 +279,14 @@ class ForwardingExecutorTest {
 
     private class RecordingSink : ForwardingFrameSink {
         val frames = mutableListOf<TransportFrame>()
-        override fun write(frame: TransportFrame) {
+        override fun write(frame: TransportFrame, revision: ForwardingExecutionRevision) {
             frames += frame
         }
     }
 
     private class FailingSink : ForwardingFrameSink {
         var calls = 0
-        override fun write(frame: TransportFrame) {
+        override fun write(frame: TransportFrame, revision: ForwardingExecutionRevision) {
             calls += 1
             throw IllegalStateException("simulated write failure")
         }
@@ -289,7 +296,7 @@ class ForwardingExecutorTest {
         var calls = 0
         var successfulWrites = 0
 
-        override fun write(frame: TransportFrame) {
+        override fun write(frame: TransportFrame, revision: ForwardingExecutionRevision) {
             calls += 1
             if (calls == 1) {
                 throw IllegalStateException("simulated first-write failure")
