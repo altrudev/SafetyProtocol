@@ -99,3 +99,8 @@ SafetyProtocol now requires a receipt store for permit execution, includes a bou
 ## Transport cancellation proof v0.13
 
 SafetyProtocol now has an allowlisted cancelable framed writer bound to ProtectedTransportSession.close(), plus bounded asynchronous cancellation that requires both successful cancellation return and write-worker quiescence inside one grace deadline. Confirmed cancellation proves no later application-level framed emission by that writer; it does not claim that already-buffered TLS/kernel bytes cannot drain onto the wire. No production forwarding path is connected. See docs/TRANSPORT-CANCELLATION-v0.13.md.
+
+
+## Synthetic-media disclosure v0.14
+
+SafetyProtocol now includes an experimental disclosure gate for humanlike synthetic media. The key invariant is that visual glitches, identity drift, frame instability, or other generator artifacts are **never** treated as disclosure evidence. Human-visible indication, spoken disclosure freshness, and optional watermark/provenance attestation are evaluated as explicit independent channels. See `docs/SYNTHETIC-MEDIA-DISCLOSURE-v0.14.md`.
